@@ -399,3 +399,11 @@ def test_cache_fetches_first_time_even_right_after_boot(monkeypatch):
     async def fetch():
         return ["spool"]
     assert asyncio.run(cache.get(fetch)) == (["spool"], None)
+
+
+def test_static_urls_are_versioned(client, fake):
+    sign_in(client, fake)
+    page = client.get("/").text
+    assert '/static/app.css?v=' in page and '/static/app.js?v=' in page
+    href = page.split('/static/app.css?v=')[1].split('"')[0]
+    assert len(href) == 10 and client.get(f"/static/app.css?v={href}").status_code == 200

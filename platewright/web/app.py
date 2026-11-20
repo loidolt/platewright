@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import hmac
 import json
 import logging
@@ -101,7 +102,11 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     bambuddy = Bambuddy(cfg, transport=transport)
     sessions = Sessions(cfg)
     templates = Jinja2Templates(directory=HERE / "templates")
-    templates.env.globals.update(config=cfg, UNLINKED=UNLINKED)
+    # Static URLs carry a hash of the file, so a deploy never meets a stale cached copy.
+    versions = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:10]
+                for f in (HERE / "static").iterdir() if f.is_file()}
+    templates.env.globals.update(config=cfg, UNLINKED=UNLINKED,
+                                 static=lambda name: f"/static/{name}?v={versions.get(name, '0')}")
     templates.env.filters["norm_hex"] = norm_hex
     templates.env.filters["fmt_date"] = lambda d: dt.date.fromisoformat(d[:10]).strftime("%b %-d") if d else ""
 
