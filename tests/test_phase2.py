@@ -464,7 +464,10 @@ def test_makerworld_link_fills_designer_license_and_file(client, fake, store):
     assert 'hx-post="/makerworld/lookup"' in client.get("/models/new").text
     r = client.post("/makerworld/lookup", data={"url": KRIN, "designer": "", "license": "", "bambuddy_file_id": ""})
     assert r.status_code == 200
-    assert "Zookis - Krin (green fox) #93 by enr · Standard Digital File License" in r.text
+    assert "<strong>Zookis - Krin (green fox) #93</strong> by enr · Standard Digital File License" in r.text
+    assert 'id="f-name" required value="Zookis - Krin (green fox) #93" hx-swap-oob="true"' in r.text
+    typed = client.post("/makerworld/lookup", data={"url": KRIN, "name": "Krin"}).text
+    assert 'id="f-name"' not in typed  # a typed name is kept
     assert 'id="f-designer" value="enr" hx-swap-oob="true"' in r.text
     assert 'value="Standard Digital File License" hx-swap-oob="true"' in r.text
     assert 'id="f-file" hx-swap-oob="true"' in r.text and '<option value="50" selected>' in r.text

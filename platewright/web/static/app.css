@@ -688,3 +688,4 @@ form.is-submitting .dropzone .busy-note .i { animation: spin 0.9s linear infinit
   .cards .tile > .thumb { grid-row: 1 / span 3; aspect-ratio: 1; }
   .cards .tile > .thumb .i { width: 1.5rem; height: 1.5rem; }
 }
+@media (max-width: 639px) { .media { flex-direction: column; } }

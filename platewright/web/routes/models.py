@@ -110,12 +110,13 @@ def register(app: FastAPI, ctx: Ctx) -> None:
 
     @app.post("/makerworld/lookup", response_class=HTMLResponse)
     async def makerworld_lookup(request: Request, url: str = Form(""), designer: str = Form(""),
-                                license: str = Form(""), bambuddy_file_id: str = Form("")):
+                                license: str = Form(""), bambuddy_file_id: str = Form(""), name: str = Form("")):
         """The model form asks this when the source link changes: a note under the link, and the
-        blank designer, license and source file filled in (out-of-band swaps)."""
+        blank name, designer, license and source file filled in (out-of-band swaps)."""
         user = ctx.require(request, "admin")
         url = url.strip()
-        context = {"mw": None, "error": None, "designer": None, "license": None, "file_id": None, "files": []}
+        context = {"mw": None, "error": None, "model_name": None, "designer": None, "license": None, "file_id": None,
+                   "files": []}
         if url and is_makerworld(url) and urlsplit(url).scheme in ("http", "https"):
             try:
                 mw = await ctx.bambuddy.makerworld(url)
@@ -123,6 +124,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
                 context["error"] = str(exc)
             else:
                 context["mw"] = mw
+                if not name.strip() and mw["title"]:
+                    context["model_name"] = mw["title"]
                 if not designer.strip() and mw["designer"]:
                     context["designer"] = mw["designer"]
                 if not license.strip() and mw["license"]:
