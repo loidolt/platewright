@@ -19,7 +19,7 @@ theme, and links back to Bambuddy's own pages. It uses only the integration poin
 documents for sidebar apps ([external links](https://wiki.bambuddy.cool/features/external-links/),
 [connected apps](https://wiki.bambuddy.cool/features/connected-apps/)) and its REST API.
 
-**Status: phase 2**, written against Bambuddy v1.3.1.
+**Status: phase 3**, written against Bambuddy v1.3.1.
 
 - **Today:** good parts this month against the target and the pace needed, what each printer is
   doing, the finished prints **to review** (confirm all good, or count bad parts per model), demand,
@@ -41,6 +41,14 @@ documents for sidebar apps ([external links](https://wiki.bambuddy.cool/features
 - **Sync** every 5 minutes: each finished print is credited to a locked plate version by the
   archive's fingerprint, falling back to the `PLATE-<code>_` file name. The **sidebar badge** is the
   prints to review plus demands at risk.
+
+- **Webhook:** a Bambuddy webhook provider pointed at `/hooks/bambuddy` (with the bearer secret
+  `PLATEWRIGHT_WEBHOOK_SECRET`) makes the sync run right after a print ends.
+- **App messages** through Bambuddy's notification channels that accept them ("Messages from connected
+  apps"): a demand that falls at risk (once, until it recovers), and a weekly summary (Monday 08:00 by
+  default). Settings has a test button.
+- **Home screen:** a web manifest and icons; the icon opens the browser, where the Bambuddy session is.
+- **Import** a toys.py folder: `platewright import-csv <folder> [--dry-run]`.
 
 **Roles**, from Bambuddy: admins do everything; members of the operator group review prints and
 record parts going out; everyone else reads. The sidebar-app basics from phase 0 stay: sign-in with
@@ -83,6 +91,7 @@ happens without a prompt.
 | `PLATEWRIGHT_SESSION_KEY` | required | Signs the session cookie, at least 32 characters. |
 | `PLATEWRIGHT_SYNC_INTERVAL` | `300` | Seconds between syncs; the badge is reported after each. Bambuddy hides a badge older than 10 minutes. |
 | `PLATEWRIGHT_DATA_DIR` | `/data` | Holds `platewright.db` (SQLite) and `plates/`, the locked files. Back up both. |
+| `PLATEWRIGHT_WEBHOOK_SECRET` | | Bearer secret the Bambuddy webhook provider sends; empty = no webhook. |
 | `PLATEWRIGHT_SEED_FILE` | | Settings JSON (wording, target, printers, palette) for a new database; ignored once settings exist. |
 | `PLATEWRIGHT_COOKIE_SECURE` | `1` | `0` only for plain-http local development. |
 | `PLATEWRIGHT_DEV` | | `1`: throwaway session key and localhost URLs. |

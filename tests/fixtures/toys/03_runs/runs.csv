@@ -1,0 +1,5 @@
+date,plate_id,plate_version,printer,units_planned,units_good,units_failed,aborted_pct,hours,grams,filaments,models_good,notes,outcome,source,bambuddy_run,failed_detail
+2026-11-01,A,1,X1C,8,7,1,,8.0,80.0,"{""Brown"": 60.0, ""White"": 20.0}","{""007-bear"": 6, ""fox"": 1}",,ok,,,
+2026-11-02,A,1,X1C,8,8,0,,8.0,80.0,"{""Brown"": 60.0, ""White"": 20.0}","{""007-bear"": 6, ""fox"": 2}",,ok,,,
+2026-11-03,A,2,X1C,8,6,2,,9.0,70.0,"{""Brown"": 70.0}","{""007-bear"": 6}",,ok,,,
+2026-11-04,A,2,X1C,8,0,8,40.0,3.6,28.0,"{""Brown"": 28.0}","{""007-bear"": 0}",,aborted,,,

@@ -34,10 +34,11 @@ from platewright.config import Settings as AppConfig
 from platewright.core.mix import ANY, UNLINKED
 from platewright.core.palette import norm_hex
 from platewright.core.plan import demand_plan, fail_rate, filament, month_status
+from platewright.messages import Messenger
 from platewright.plates import PlateFiles
 from platewright.store.db import Store
 from platewright.web.context import Ctx, LoginRequired, can, safe_next
-from platewright.web.routes import admin, demand, models, plates, production
+from platewright.web.routes import admin, demand, hooks, models, plates, production
 from platewright.web.session import Sessions
 
 logger = logging.getLogger(__name__)
@@ -111,11 +112,17 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
         return len(store.to_review(today=today)) + sum(p.at_risk for p in demand_risk(today))
 
     badge = BadgeReporter(bambuddy, badge_count)
-    sync = SyncLoop(bambuddy, store, cfg.sync_interval, after=badge.report)
+    messenger = Messenger(bambuddy, store, cfg.public_url)
+
+    async def after_sync() -> None:
+        await badge.report()
+        await messenger.tick()
+
+    sync = SyncLoop(bambuddy, store, cfg.sync_interval, after=after_sync)
     spools_cache = Cached(60)
     printers_cache = Cached(20)
     ctx = Ctx(cfg=cfg, store=store, bambuddy=bambuddy, sessions=sessions, templates=templates,
-              extra={"badge": badge, "sync": sync})
+              extra={"badge": badge, "sync": sync, "messenger": messenger})
     page = ctx.page
 
     @asynccontextmanager
@@ -239,6 +246,7 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     production.register(app, ctx)
     demand.register(app, ctx)
     admin.register(app, ctx)
+    hooks.register(app, ctx)
 
     # -- sign in with Bambuddy ------------------------------------------------------------
 
@@ -297,6 +305,17 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
 
     @app.get("/favicon.ico")
     async def favicon():
-        return Response(status_code=204)
+        return RedirectResponse(f"/static/icon-32.png?v={versions.get('icon-32.png', '0')}", status_code=301)
+
+    @app.get("/manifest.webmanifest")
+    async def manifest():
+        """For "Add to Home Screen". display: browser on purpose: the icon opens the browser, where
+        the Bambuddy session lives; a standalone web app on iOS keeps cookies of its own."""
+        icons = [{"src": f"/static/{n}?v={versions.get(n, '0')}", "sizes": size, "type": "image/png", **extra}
+                 for n, size, extra in (("icon-192.png", "192x192", {}), ("icon-512.png", "512x512", {}),
+                                        ("icon-maskable-512.png", "512x512", {"purpose": "maskable"}))]
+        return JSONResponse({"name": "Platewright", "short_name": "Platewright", "start_url": "/", "scope": "/",
+                             "display": "browser", "background_color": "#1a1a1a", "theme_color": "#00ae42",
+                             "icons": icons}, media_type="application/manifest+json")
 
     return app

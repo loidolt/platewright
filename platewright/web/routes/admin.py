@@ -16,6 +16,7 @@ from platewright.web.context import Ctx
 SCALARS = {
     "unit_name": str, "period_target": int, "max_plate_hours": float, "assumed_fail_rate": float,
     "reorder_days": float, "operator_group": str, "library_folder": str, "retired_folder": str,
+    "summary_weekday": int, "summary_hour": int,
 }
 
 
@@ -39,12 +40,16 @@ def backup_status(data_dir: str) -> dict | None:
 def register(app: FastAPI, ctx: Ctx) -> None:
     store = ctx.store
 
+    def status_extras() -> dict:
+        return {"messages_state": store.state("messages"), "webhook": store.state("webhook"),
+                "webhook_set_up": bool(ctx.cfg.webhook_secret)}
+
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request):
         user = ctx.require(request, "admin")
         return ctx.page(request, "settings.html", user=user, nav="settings", s=store.settings(), errors=[],
                         last_sync=store.state("last_sync"), badge=ctx.extra["badge"].state,
-                            backup=backup_status(ctx.cfg.data_dir))
+                            backup=backup_status(ctx.cfg.data_dir), **status_extras())
 
     @app.post("/settings", response_class=HTMLResponse)
     async def save_settings(request: Request):
@@ -53,11 +58,15 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         values: dict = {}
         errors: list[str] = []
         for key, kind in SCALARS.items():
+            if key not in form:  # not on this form: keep what is saved
+                continue
             raw = str(form.get(key, "")).strip()
             try:
                 values[key] = kind(raw) if kind is not str else raw
             except ValueError:
                 errors.append(f"{key.replace('_', ' ')}: '{raw}' isn't a number")
+        if "summary_hour" in form:  # the Messages section is on the form
+            values["messages"] = bool(form.get("messages"))
         if "assumed_fail_rate" in values:
             values["assumed_fail_rate"] = values["assumed_fail_rate"] / 100  # entered as percent
         printers = {}
@@ -97,7 +106,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             draft = Settings.from_values({**store.settings_values(), **{k: v for k, v in values.items()}})
             return ctx.page(request, "settings.html", 400, user=user, nav="settings", s=draft, errors=errors,
                             last_sync=store.state("last_sync"), badge=ctx.extra["badge"].state,
-                            backup=backup_status(ctx.cfg.data_dir))
+                            backup=backup_status(ctx.cfg.data_dir), **status_extras())
         store.set_settings(values)
         return ctx.back("/settings", "Saved")
 
@@ -113,4 +122,17 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         status = backup_status(ctx.cfg.data_dir)
         ok = bool(status and status.get("fresh"))
         return JSONResponse({"status": "ok" if ok else "stale", "last": status}, status_code=200 if ok else 503)
+
+    @app.post("/settings/test-message")
+    async def test_message(request: Request):
+        ctx.require(request, "admin")
+        from platewright.bambuddy.client import BambuddyError
+
+        try:
+            n = await ctx.extra["messenger"].send("Platewright test", "If you read this on your phone, app messages "
+                                                  "reach you through Bambuddy.", "/settings")
+        except BambuddyError as exc:
+            return ctx.back("/settings", f"Bambuddy refused: {exc}")
+        return ctx.back("/settings", f"Sent to {n} channel{'' if n == 1 else 's'}" if n else
+                        "Bambuddy has no channel with \"Messages from connected apps\" on")
 

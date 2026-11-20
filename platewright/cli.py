@@ -73,6 +73,17 @@ def cmd_check_plate(a, store: Store) -> int:
     return 0 if c.ok else 2
 
 
+def cmd_import_csv(a, store: Store) -> int:
+    """A toys.py folder: config.json and the CSVs (see platewright/importer.py)."""
+    from platewright.importer import import_folder
+
+    rep = import_folder(a.folder, store, config.load().data_dir, dry_run=a.dry_run, replace_settings=a.replace_settings)
+    print(("Would import " if a.dry_run else "Imported ") + rep.line())
+    for n in rep["notes"]:
+        print(f"  note: {n}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="platewright", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -81,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--replace", action="store_true", help="overwrite settings that already exist")
     s.add_argument("--force", action="store_true", help="import even if the palette or printers have problems")
     s.set_defaults(fn=cmd_import_config)
+    s = sub.add_parser("import-csv", help="import a toys.py folder (config.json and its CSVs)")
+    s.add_argument("folder")
+    s.add_argument("--dry-run", action="store_true", help="show what would be imported, change nothing")
+    s.add_argument("--replace-settings", action="store_true", help="overwrite settings with config.json")
+    s.set_defaults(fn=cmd_import_csv)
     s = sub.add_parser("sync", help="sync finished prints from Bambuddy now")
     s.set_defaults(fn=cmd_sync)
     s = sub.add_parser("check-plate", help="run the plate checks on a sliced .gcode.3mf (locks nothing)")

@@ -44,6 +44,7 @@ class Settings:
     sync_interval: int
     data_dir: str
     seed_file: str
+    webhook_secret: str = ""
 
     @property
     def bambuddy_origin(self) -> str:
@@ -92,4 +93,6 @@ def load() -> Settings:
         data_dir=os.environ.get("PLATEWRIGHT_DATA_DIR", "./data" if dev else "/data"),
         # Settings for an empty database (JSON); afterwards the database owns them.
         seed_file=os.environ.get("PLATEWRIGHT_SEED_FILE", ""),
+        # Bearer secret of the Bambuddy webhook provider that nudges a sync (empty = no webhook).
+        webhook_secret=os.environ.get("PLATEWRIGHT_WEBHOOK_SECRET", "").strip(),
     )

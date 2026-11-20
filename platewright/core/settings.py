@@ -18,6 +18,9 @@ DEFAULTS: dict = {
     "retired_folder": "Retired plates",
     "printers": {},
     "palette": {},
+    "messages": True,  # demand alerts and the weekly summary through Bambuddy's channels
+    "summary_weekday": 0,  # Monday
+    "summary_hour": 8,
 }
 
 
@@ -33,6 +36,9 @@ class Settings:
     retired_folder: str = "Retired plates"
     printers: dict = field(default_factory=dict)
     palette: dict = field(default_factory=dict)
+    messages: bool = True
+    summary_weekday: int = 0
+    summary_hour: int = 8
 
     @classmethod
     def from_values(cls, values: dict) -> Settings:
@@ -48,6 +54,9 @@ class Settings:
             retired_folder=str(v["retired_folder"]),
             printers=dict(v["printers"]),
             palette=dict(v["palette"]),
+            messages=bool(v["messages"]),
+            summary_weekday=int(v["summary_weekday"]) % 7,
+            summary_hour=min(max(int(v["summary_hour"]), 0), 23),
         )
 
     def unit(self, n: int | None = None) -> str:
