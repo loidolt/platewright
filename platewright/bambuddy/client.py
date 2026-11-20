@@ -1,0 +1,135 @@
+"""Bambuddy API: the connected-app sign-in and the sidebar badge.
+
+Written against Bambuddy v1.3.1 (backend/app/api/routes/connected_apps.py and
+external_links.py). Sign-in is an OAuth 2.0 authorization-code flow with PKCE,
+S256 only:
+
+1. The browser goes to ``<bambuddy>/connect/authorize`` (an SPA page) with our
+   client_id, callback URL, state and code challenge. After a one-time consent
+   per user, Bambuddy sends the browser to the callback with a code that lives
+   60 seconds.
+2. This server swaps the code at ``POST /api/v1/connect/token`` with the
+   client secret and the PKCE verifier, and gets the user's identity.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import secrets
+from dataclasses import dataclass
+from urllib.parse import urlencode
+
+import httpx
+
+from platewright.config import Settings
+
+
+def new_verifier() -> str:
+    # 64 random bytes -> 86 base64url characters (RFC 7636 allows 43-128).
+    return secrets.token_urlsafe(64)
+
+
+def s256(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def authorize_url(settings: Settings, *, state: str, verifier: str) -> str:
+    query = urlencode(
+        {
+            "client_id": settings.client_id,
+            "redirect_uri": settings.callback_url,
+            "state": state,
+            "code_challenge": s256(verifier),
+            "code_challenge_method": "S256",
+        }
+    )
+    return f"{settings.bambuddy_url}/connect/authorize?{query}"
+
+
+@dataclass(frozen=True)
+class BambuddyUser:
+    id: int
+    username: str
+    email: str | None
+    is_admin: bool
+    groups: list[str]
+    permission_count: int
+
+
+class SignInError(Exception):
+    """The token exchange failed. ``error`` is Bambuddy's code when it gave one
+    (invalid_client, invalid_grant, auth_disabled), else a short reason."""
+
+    def __init__(self, error: str, status: int | None = None):
+        super().__init__(error)
+        self.error = error
+        self.status = status
+
+
+class Bambuddy:
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
+        self.settings = settings
+        self._http = httpx.AsyncClient(
+            base_url=f"{settings.bambuddy_api_url}/api/v1",
+            timeout=httpx.Timeout(10.0),
+            transport=transport,
+            headers={"User-Agent": "platewright/0"},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def exchange_code(self, code: str, verifier: str) -> BambuddyUser:
+        try:
+            response = await self._http.post(
+                "/connect/token",
+                json={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": self.settings.callback_url,
+                    "client_id": self.settings.client_id,
+                    "client_secret": self.settings.client_secret,
+                    "code_verifier": verifier,
+                },
+            )
+        except httpx.HTTPError as exc:
+            raise SignInError(f"Bambuddy unreachable: {type(exc).__name__}") from exc
+        if response.status_code != 200:
+            raise SignInError(_error_code(response), response.status_code)
+        user = response.json()["user"]
+        return BambuddyUser(
+            id=int(user["id"]),
+            username=user["username"],
+            email=user.get("email"),
+            is_admin=bool(user["is_admin"]),
+            groups=list(user.get("groups", [])),
+            permission_count=len(user.get("permissions", [])),
+        )
+
+    async def set_badge(self, count: int) -> int:
+        """Set the count on the sidebar links pointing at Platewright. Returns how
+        many links Bambuddy updated. Raises httpx.HTTPStatusError on refusal
+        (401/403: key or its permission; 404: no link has our address)."""
+        response = await self._http.put(
+            "/external-links/badge",
+            json={"url": self.settings.public_url, "count": count},
+            headers={"X-API-Key": self.settings.bambuddy_key},
+        )
+        response.raise_for_status()
+        return int(response.json().get("links", 0))
+
+
+def _error_code(response: httpx.Response) -> str:
+    # FastAPI wraps HTTPException details: {"detail": {"error": "..."}} or
+    # {"detail": "..."}; anything else is reported by status.
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        return f"HTTP {response.status_code}"
+    if isinstance(detail, dict) and "error" in detail:
+        return str(detail["error"])
+    if isinstance(detail, str):
+        return detail
+    return f"HTTP {response.status_code}"

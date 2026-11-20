@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fake-bambuddy",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "dev.fake_bambuddy:app", "--port", "3700"],
+      "port": 3700
+    },
+    {
+      "name": "platewright-dev",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PLATEWRIGHT_DEV=1", "PLATEWRIGHT_COOKIE_SECURE=0", "PLATEWRIGHT_PUBLIC_URL=http://localhost:3710",
+        "PLATEWRIGHT_BAMBUDDY_URL=http://localhost:3700", "PLATEWRIGHT_BAMBUDDY_KEY=bb_dev",
+        "PLATEWRIGHT_CLIENT_ID=bba_dev", "PLATEWRIGHT_CLIENT_SECRET=bbs_dev",
+        "uv", "run", "uvicorn", "platewright.web.app:create_app", "--factory", "--port", "3710"],
+      "port": 3710
+    }
+  ]
+}

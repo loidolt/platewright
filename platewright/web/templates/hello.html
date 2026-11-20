@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <h1>Platewright</h1>
+  <span class="tag">phase 0</span>
+</header>
+
+<section class="card">
+  <h2>Signed in with Bambuddy</h2>
+  <dl class="facts">
+    <dt>User</dt><dd><strong>{{ user.username }}</strong>{% if user.email %} · {{ user.email }}{% endif %}</dd>
+    <dt>Groups</dt><dd>{{ user.groups | join(", ") if user.groups else "none" }}</dd>
+    <dt>is_admin</dt><dd>{{ "true" if user.is_admin else "false" }}</dd>
+    <dt>Permissions</dt><dd>{{ user.permission_count }}</dd>
+  </dl>
+  <div class="row">
+    <button type="button" class="btn" hx-get="/whoami" hx-target="#whoami" hx-swap="innerHTML">Check cookie again</button>
+    <span id="whoami" class="muted"></span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Bambuddy</h2>
+  <p>
+    <a class="btn btn-accent" id="open-queue" href="{{ settings.bambuddy_url }}/queue"
+       target="_blank" rel="noopener" data-bambuddy-path="/queue">Open the queue in Bambuddy</a>
+  </p>
+  <dl class="facts">
+    <dt>In Bambuddy's frame</dt><dd id="diag-framed">…</dd>
+    <dt>Theme message</dt><dd id="diag-theme">none yet</dd>
+    <dt>Navigate</dt><dd id="diag-nav">…</dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Sidebar badge</h2>
+  <div id="badge" hx-get="/badge" hx-trigger="every 30s" hx-swap="innerHTML">
+    {% include "_badge.html" %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>This browser</h2>
+  <dl class="facts">
+    <dt>User agent</dt><dd id="diag-ua" class="small">…</dd>
+    <dt>Storage access</dt><dd id="diag-storage">…</dd>
+  </dl>
+  <form method="post" action="/auth/logout"><button class="btn" type="submit">Sign out of Platewright</button></form>
+</section>
+{% endblock %}
