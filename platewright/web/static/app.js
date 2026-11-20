@@ -91,6 +91,88 @@
       if (/^#[0-9a-fA-F]{6}$/.test(hex)) el.style.backgroundColor = hex;
     });
   }
-  document.addEventListener("DOMContentLoaded", function () { paint(); });
+
+  // Toasts: the one-line notice after a save, gone after a few seconds (as Bambuddy's), and
+  // dropped from the address so a reload doesn't show it again.
+  function dismiss(toast) {
+    if (!toast || toast.classList.contains("hide")) return;
+    toast.classList.add("hide");
+    setTimeout(function () { toast.remove(); }, 300);
+  }
+  function toasts() {
+    document.querySelectorAll("[data-toast]").forEach(function (t) {
+      // errors and warnings stay longer, as Bambuddy's do
+      var slow = t.classList.contains("bad") || t.classList.contains("warn");
+      setTimeout(function () { dismiss(t); }, slow ? 8000 : 4000);
+    });
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.has("notice")) {
+        url.searchParams.delete("notice");
+        url.searchParams.delete("tone");
+        window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+      }
+    } catch (err) { /* old browser: the notice just stays in the address */ }
+  }
+  document.addEventListener("click", function (e) {
+    var x = e.target.closest && e.target.closest("[data-dismiss]");
+    if (x) dismiss(x.closest("[data-toast]"));
+  });
+
+  // Busy forms: a second tap must not post twice (two taps on "Queue" would queue twice).
+  // The submit button shows a spinner until the next page arrives. (No confirm(): Bambuddy's
+  // frame sandbox has no allow-modals, so dialogs are blocked; confirmations are inline folds.)
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    var submitter = e.submitter;
+    if (form.hasAttribute("hx-post") || form.hasAttribute("hx-get")) return; // htmx marks its own
+    if (form.dataset.busy) { e.preventDefault(); return; }
+    form.dataset.busy = "1";
+    form.classList.add("is-submitting");
+    var btn = submitter || form.querySelector("button[type=submit], button:not([type])");
+    if (btn) setTimeout(function () { btn.classList.add("is-busy"); }, 0);
+  }, true);
+  window.addEventListener("pageshow", function (e) {
+    if (!e.persisted) return; // back from the next page: forms work again
+    document.querySelectorAll("form[data-busy]").forEach(function (f) {
+      delete f.dataset.busy;
+      f.classList.remove("is-submitting");
+    });
+    document.querySelectorAll(".is-busy").forEach(function (b) { b.classList.remove("is-busy"); });
+  });
+
+  // Controls that submit on change: a chosen file, an override box. data-submit names the
+  // button to submit with (its formaction / formmethod), or "" for the form's own.
+  document.addEventListener("change", function (e) {
+    var el = e.target;
+    if (!el.matches || !el.matches("[data-submit]") || !el.form) return;
+    if (el.type === "file" && !el.files.length) return;
+    var btn = el.dataset.submit ? document.querySelector(el.dataset.submit) : null;
+    if (el.form.requestSubmit) el.form.requestSubmit(btn || undefined); else el.form.submit();
+  });
+
+  // Drop zone: highlight while a file is dragged over it (the file input underneath takes the drop).
+  ["dragenter", "dragover"].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      var z = e.target.closest && e.target.closest(".dropzone");
+      if (z) z.classList.add("over");
+    });
+  });
+  ["dragleave", "drop"].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      var z = e.target.closest && e.target.closest(".dropzone");
+      if (z) z.classList.remove("over");
+    });
+  });
+
+  // Settings › Palette: the swatch follows the hex as it's typed.
+  document.addEventListener("input", function (e) {
+    if (!e.target.matches || !e.target.matches("input[name=color_hex]")) return;
+    var swatch = e.target.closest("tr") && e.target.closest("tr").querySelector(".swatch");
+    var hex = e.target.value.trim();
+    if (swatch && /^#?[0-9a-fA-F]{6}$/.test(hex)) swatch.style.backgroundColor = hex.charAt(0) === "#" ? hex : "#" + hex;
+  });
+
+  document.addEventListener("DOMContentLoaded", function () { paint(); toasts(); });
   document.addEventListener("htmx:afterSwap", function (e) { paint(e.target); });
 })();

@@ -1,10 +1,13 @@
 {% extends "base.html" %}
+{% from "_macros.html" import empty %}
 {% block title %}{{ title }} · Platewright{% endblock %}
 {% block content %}
 <section class="card">
-  <h1>{{ title }}</h1>
-  <p>{{ message }}</p>
-  {% if back %}<p><a class="btn" href="/" data-back>Back</a></p>{% endif %}
-  {% if retry %}<p><a class="btn btn-accent" href="/auth/login">Sign in with Bambuddy</a></p>{% endif %}
+  {% call empty("circle-alert", title, message) %}
+  <div class="actions">
+    {% if back %}<a class="btn" href="/" data-back>{{ icon("arrow-left") }} Back</a>{% endif %}
+    {% if retry %}<a class="btn btn-primary" href="/auth/login">Sign In with Bambuddy</a>{% endif %}
+  </div>
+  {% endcall %}
 </section>
 {% endblock %}

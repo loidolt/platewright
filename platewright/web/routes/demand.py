@@ -146,27 +146,27 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         if d is None or p is None or not p.active:
             raise HTTPException(400, "Unknown demand or plate")
         if not p.bambuddy_file_id:
-            return ctx.back(f"/demand/{slug}", f"Plate {p.code} isn't in File Manager yet; put it there from its page")
+            return ctx.back(f"/demand/{slug}", f"Plate {p.code} isn't in File Manager yet; upload it from its page", "bad")
         settings = store.settings()
         key = printer or next(iter(settings.printers), "")
         if settings.printers and key not in settings.printers:
             raise HTTPException(400, "Unknown printer")
         pc = settings.printers.get(key, {})
         if pc.get("model") and p.printer_model and pc["model"] != p.printer_model:
-            return ctx.back(f"/demand/{slug}", f"Plate {p.code} was sliced for a {p.printer_model}, not a {pc['model']}")
+            return ctx.back(f"/demand/{slug}", f"Plate {p.code} was sliced for a {p.printer_model}, not a {pc['model']}", "bad")
         bb = ctx.bambuddy
         try:
             lib = await bb.library_file(p.bambuddy_file_id)
             if lib.get("file_hash") and lib["file_hash"] != p.sha256:
                 return ctx.back(f"/demand/{slug}", f"File Manager's file {p.bambuddy_file_id} isn't the locked "
-                                                   f"plate {p.code}; upload it again from the plate page")
+                                                   f"plate {p.code}; upload it again from the plate page", "bad")
             want = (pc.get("bambuddy_name") or key).lower()
             printers = await bb.printers()
             hit = [x for x in printers if (x.get("name") or "").lower() == want]
             if not hit and len(printers) == 1:
                 hit = printers
             if not hit:
-                return ctx.back(f"/demand/{slug}", f"No Bambuddy printer called '{want}'")
+                return ctx.back(f"/demand/{slug}", f"No Bambuddy printer called '{want}'", "bad")
             project_id = d["bambuddy_project_id"]
             body = project_body(slug)
             if project_id:
@@ -184,7 +184,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
                 "project_id": project_id, "confirm_outcome": True, "require_previous_success": True,
                 "manual_start": True})
         except BambuddyError as exc:
-            return ctx.back(f"/demand/{slug}", f"Bambuddy refused: {exc}")
-        return ctx.back(f"/demand/{slug}", f"Queued plate {p.code} ×{times} ({times * p.units} {settings.unit()}) "
-                                           f"in project {project_id}, queue item {(res or {}).get('id', '?')}. "
-                                           "Each run waits for you to clear the bed and press start in Bambuddy.")
+            return ctx.back(f"/demand/{slug}", f"Bambuddy refused: {exc}", "bad")
+        return ctx.back(f"/demand/{slug}", f"Queued plate {p.code} {times} time{'' if times == 1 else 's'} "
+                                           f"({times * p.units} {settings.unit()}). Each run waits in the Print Queue "
+                                           "until you clear the bed and press start.")

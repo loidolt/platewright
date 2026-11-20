@@ -66,7 +66,9 @@ class Ctx:
         settings = context.setdefault("settings", self.store.settings())
         context.setdefault("nav", "")
         context.setdefault("role", role_of(user, settings))
-        context.setdefault("notice", request.query_params.get("notice", "")[:200])
+        context.setdefault("notice", request.query_params.get("notice", "")[:300])
+        tone = request.query_params.get("tone", "")
+        context.setdefault("notice_tone", tone if tone in ("bad", "warn") else "")
         response = self.templates.TemplateResponse(request, name, context, status_code=status_code)
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -98,6 +100,8 @@ class Ctx:
         return {r["slug"]: r for r in self.store.models()}
 
     @staticmethod
-    def back(path: str, notice: str = "") -> RedirectResponse:
-        """Post / redirect / get, with a one-line notice for the next page."""
-        return RedirectResponse(f"{path}?{urlencode({'notice': notice})}" if notice else path, status_code=303)
+    def back(path: str, notice: str = "", tone: str = "") -> RedirectResponse:
+        """Post / redirect / get, with a one-line notice for the next page: done (the default),
+        or tone "warn" / "bad" when it didn't go as asked."""
+        query = {"notice": notice, **({"tone": tone} if tone else {})}
+        return RedirectResponse(f"{path}?{urlencode(query)}" if notice else path, status_code=303)

@@ -343,8 +343,9 @@ def test_today_page_and_badge(client, fake, store):
     assert r.status_code == 200 and "2 new" in r.text
     assert fake.badges[-1] == {"url": "https://plates.example.test", "count": 2}  # two runs to review
     page = client.get("/").text
-    assert "To review" in page and 'data-bambuddy-path="/archives/10"' in page and "No good / reject" in page
-    assert "<strong>8</strong> / 500 good toys" in page
+    assert "To Review" in page and 'data-bambuddy-path="/archives/10"' in page and "No good / reject" in page
+    assert "Good toys" in page and '8 <span class="of">of 500</span>' in page
+    assert "Mark All Good" in page  # two prints to review
     printing = client.get("/partials/printing").text
     assert "PLATE-N_4up" in printing and "42%" in printing and "2 h 5 min left" in printing
 
@@ -353,11 +354,12 @@ def test_plates_and_models_pages(client, fake, store):
     lock_plate(store)
     sign_in(client, fake)
     plates = client.get("/plates").text
-    assert "Plate N" in plates and "Nunu ×4" in plates and 'data-bambuddy-path="/files?highlight=2"' in plates
+    assert "Plate N" in plates and "Nunu ×4" in plates and 'src="/thumb/2"' in plates
+    assert 'data-bambuddy-path="/files?highlight=2"' in client.get("/plates/N").text
     assert "Version 1" in client.get("/plates/n").text
     assert client.get("/plates/ZZ").status_code == 404
     models = client.get("/models").text
-    assert "Nunu" in models and "test print passed" in models and "may hand out" in models and "3+" in models
+    assert "Nunu" in models and "Test print passed" in models and "May hand out" in models and "Ages 3+" in models
 
 
 def test_filament_page(client, fake, store):
@@ -365,13 +367,13 @@ def test_filament_page(client, fake, store):
                    {"rgba": "00FF00FF", "material": "PETG", "brand": "Acme", "label_weight": 1000, "weight_used": 0}]
     sign_in(client, fake)
     page = client.get("/filament").text
-    assert "750 g" in page and "Spools not in the palette" in page and "Acme" in page
-    assert page.count("reorder") >= 1  # White: none on hand
+    assert "750 g" in page and "Spools Not in the Palette" in page and "Acme" in page
+    assert page.count("Reorder") >= 1  # White: none on hand
 
 
 def test_empty_pages_explain_themselves(client, fake):
     sign_in(client, fake)
-    assert "No plates locked yet" in client.get("/plates").text
+    assert "No plates yet" in client.get("/plates").text
     assert "No models registered yet" not in client.get("/models").text  # Nunu exists in this store
     assert "Nothing to review" in client.get("/").text
 
@@ -409,3 +411,19 @@ def test_static_urls_are_versioned(client, fake):
     assert '/static/app.css?v=' in page and '/static/app.js?v=' in page
     href = page.split('/static/app.css?v=')[1].split('"')[0]
     assert len(href) == 10 and client.get(f"/static/app.css?v={href}").status_code == 200
+
+
+def test_unknown_address_is_a_page_not_json(client, fake):
+    sign_in(client, fake)
+    r = client.get("/no-such-page")
+    assert r.status_code == 404 and "<html" in r.text and "no page at this address" in r.text
+    r = client.get("/no-such-page", headers={"HX-Request": "true"})
+    assert r.status_code == 404 and 'role="alert"' in r.text and "<html" not in r.text
+
+
+def test_notice_tone_shows_as_an_error_toast(client, fake):
+    sign_in(client, fake)
+    page = client.get("/?notice=Bambuddy+refused&tone=bad").text
+    assert 'class="toast bad"' in page and 'role="alert"' in page and "Bambuddy refused" in page
+    page = client.get("/?notice=Saved&tone=other").text
+    assert 'class="toast "' in page and 'role="status"' in page  # an unknown tone is a plain notice

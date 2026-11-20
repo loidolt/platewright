@@ -1,101 +1,153 @@
 {% extends "base.html" %}
-{% from "_macros.html" import bb_link, mix, outcome %}
+{% from "_macros.html" import bb_link, mix, outcome, page_head, pill %}
 {% block content %}
+{% call page_head("Today", "calendar-check", month.month | fmt_month) %}
+  {{ bb_link("/queue", "Print Queue", "btn btn-sm", "list-ordered") }}
+{% endcall %}
+
 {% if problems %}
-<section class="card notice">
-  <h2>Settings need attention</h2>
-  <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
-</section>
+<div class="banner bad" role="alert">{{ icon("triangle-alert") }}
+  <div><strong>Settings need attention</strong>
+    <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+    {% if role == "admin" %}<a href="/settings">Open Settings</a>{% endif %}</div>
+</div>
 {% endif %}
 
-<section class="card">
-  <h2>{{ month.month }}</h2>
-  {% if month.target %}
-  <p class="big"><strong>{{ month.good }}</strong> / {{ month.target }} good {{ settings.unit() }}</p>
-  <progress value="{{ month.good }}" max="{{ month.target }}">{{ (month.progress * 100) | round | int }}%</progress>
-  {% else %}
-  <p class="big"><strong>{{ month.good }}</strong> good {{ settings.unit() }} this month</p>
-  {% endif %}
-  <p class="muted">
-    {{ month.planned }} printed{% if month.planned %}, {{ month.failed }} failed
-    ({{ (month.fail_rate * 100) | round(1) }}%){% endif %} · {{ month.hours }} printer-hours
-  </p>
-  {% if month.target %}
-    {% if not month.remaining %}
-    <p class="good">Monthly target met.</p>
-    {% elif not month.days_left %}
-    <p class="bad">Month is over: {{ month.remaining }} short of the target.</p>
-    {% elif month.best_plate %}
-    <p>Need {{ month.remaining }} more ≈ <strong>{{ month.plates_needed }}</strong> × plate {{ month.best_plate.code }}
-      ({{ month.best_plate.units }}-up); {{ month.days_left }} days left = {{ month.slots | round(1) }} plate slots.</p>
-    {% if month.behind %}<p class="bad">Behind pace: more plates needed than slots left.</p>{% endif %}
-    {% else %}
-    <p class="muted">No active plates yet.</p>
-    {% endif %}
-  {% endif %}
-  {% if month.high_fail %}<p class="bad">Fail rate above 5%: check for wet filament, a worn plate or a dirty nozzle.</p>{% endif %}
-</section>
-
-<section class="card">
-  <h2>Printing now</h2>
-  <div hx-get="/partials/printing" hx-trigger="load, every 30s" hx-swap="innerHTML">
-    <p class="muted">Asking Bambuddy…</p>
+<div class="stats">
+  <div class="stat">
+    <div class="stat-label">{{ icon("circle-check") }} Good {{ settings.unit() }}</div>
+    <div class="stat-value">{{ month.good }}{% if month.target %} <span class="of">of {{ month.target }}</span>{% endif %}</div>
+    {% if month.target %}<progress value="{{ month.good }}" max="{{ month.target }}">{{ (month.progress * 100) | round | int }}%</progress>{% endif %}
+    <div class="stat-note{% if month.high_fail %} bad{% endif %}">{{ month.planned }} printed{% if month.planned %} · {{ (month.fail_rate * 100) | round(1) }}% failed{% endif %}</div>
   </div>
-</section>
+  <div class="stat">
+    <div class="stat-label">{{ icon("layout-grid") }} Plates to go</div>
+    {% if not month.target %}
+    <div class="stat-value">–</div><div class="stat-note">No monthly target{% if role == "admin" %} · <a href="/settings">set one</a>{% endif %}</div>
+    {% elif not month.remaining %}
+    <div class="stat-value">0</div><div class="stat-note good">Target met</div>
+    {% elif month.best_plate %}
+    <div class="stat-value">{{ month.plates_needed }}</div>
+    <div class="stat-note">{{ month.remaining }} more {{ settings.unit() }} as plate {{ month.best_plate.code }} ({{ month.best_plate.units }} each)</div>
+    {% else %}
+    <div class="stat-value">–</div><div class="stat-note">{{ month.remaining }} more {{ settings.unit() }}; no active plate</div>
+    {% endif %}
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("clock") }} Days left</div>
+    <div class="stat-value">{{ month.days_left }}</div>
+    {% if month.target and month.remaining and not month.days_left %}
+    <div class="stat-note bad">Month over, {{ month.remaining }} short</div>
+    {% elif month.behind %}
+    <div class="stat-note bad">Behind: {{ month.slots | round(1) }} plate slots left</div>
+    {% else %}
+    <div class="stat-note">{{ month.slots | round(1) }} plate slots left</div>
+    {% endif %}
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("printer") }} Printer-hours</div>
+    <div class="stat-value">{{ month.hours }}</div>
+    <div class="stat-note">this month</div>
+  </div>
+</div>
 
-<section class="card">
-  <h2>To review</h2>
-  {% if review %}
-  <p class="muted">Finished prints of production plates. Confirm all good, or count the bad {{ settings.unit() }}.</p>
-  {% for run in review %}{% include "_review.html" %}{% endfor %}
-  {% else %}
-  <p class="muted">Nothing to review.</p>
-  {% endif %}
-</section>
+{% if month.high_fail %}
+<div class="banner">{{ icon("triangle-alert") }}<p>More than 5% failed this month. Check for wet filament, a worn build plate or a dirty nozzle.</p></div>
+{% endif %}
 
-<section class="card">
-  <h2><a href="/demand">Demand</a></h2>
-  {% if plan %}
-  <ul class="list">
-    {% for p in plan %}
-    <li>
-      <span><a href="/demand/{{ p.demand.slug }}"><strong>{{ p.demand.name }}</strong></a> · {{ p.demand.due | fmt_date }}
-        {% if p.days < 0 %}<span class="bad">(date passed)</span>{% else %}(in {{ p.days }} days){% endif %}
-        · {{ p.demand.total }} {{ settings.unit() }}</span>
-      {% if not p.short %}<span class="pill good">covered</span>
-      {% elif p.at_risk %}<span class="pill bad">short {{ p.short }}</span>
-      {% else %}<span class="pill warn">short {{ p.short }} ≈ {{ p.plates }} plates</span>{% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="muted">No open orders, events or restock targets.</p>
-  {% endif %}
-  <p class="muted"><a href="/stock">Finished {{ settings.unit() }} on hand: {{ on_hand }}</a></p>
-</section>
+<div class="cols">
+  <div class="stack-lg">
+    {% set operator = can(user, settings, "operator") %}
+    <section class="card" id="review">
+      <div class="card-head">
+        <h2 class="card-title">To Review{% if review %} <span class="count">{{ review | length }}</span>{% endif %}</h2>
+        {% if operator and review | length > 1 %}
+        <form method="post" action="/runs/review-all">
+          <input type="hidden" name="ids" value="{{ review | map(attribute='id') | join(',') }}">
+          <button class="btn btn-sm" type="submit">{{ icon("check") }} Mark All Good</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if review %}
+      <p class="help">{% if operator %}Finished prints of production plates. Confirm each is all good, or count the bad {{ settings.unit() }}.
+        {% else %}Finished prints waiting for an operator to confirm them.{% endif %}</p>
+      <ul class="list">
+        {% for run in review %}<li>{% include "_review.html" %}</li>{% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty compact"><p class="muted">{{ icon("circle-check") }} Nothing to review.</p></div>
+      {% endif %}
+    </section>
 
-<section class="card">
-  <h2>Recent runs</h2>
-  {% if recent %}
-  <table class="grid">
-    <thead><tr><th>Date</th><th>Plate</th><th>Good</th><th></th></tr></thead>
-    <tbody>
-    {% for r in recent %}
-      <tr>
-        <td>{{ r.date | fmt_date }}</td>
-        <td><a href="/plates/{{ r.plate_code }}">{{ r.plate_code }}</a> v{{ r.version }}</td>
-        <td>{{ r.good }} / {{ r.planned }}</td>
-        <td>{{ outcome(r) }}{% if r.matched_by_name %} <span class="pill warn" title="matched by file name, not fingerprint">by name</span>{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">No production runs yet. Prints of registered plates show up here after a sync.</p>
-  {% endif %}
-</section>
+    <section class="card flush">
+      <div class="card-head">
+        <h2 class="card-title">Recent Runs</h2>
+      </div>
+      {% if recent %}
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th class="wide-only">Date</th><th>Plate</th><th class="num">Good</th><th>Result</th></tr></thead>
+        <tbody>
+        {% for r in recent %}
+          <tr>
+            <td class="nowrap wide-only">{{ r.date | fmt_date }}</td>
+            <td class="nowrap"><a href="/plates/{{ r.plate_code }}">Plate {{ r.plate_code }}</a> <span class="muted">v{{ r.version }}</span>
+              <span class="sub phone-only">{{ r.date | fmt_date }}</span></td>
+            <td class="num">{{ r.good }} / {{ r.planned }}</td>
+            <td>{{ outcome(r) }}{% if r.matched_by_name %} {{ pill("warn", "By name", "circle-alert") }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="card-foot"><p class="muted">No production runs yet. Prints of locked plates show up here after a sync.</p></div>
+      {% endif %}
+      <div class="card-foot">
+        <p class="help">
+        {% if not last_sync %}Not synced with Bambuddy yet.
+        {% elif last_sync.error %}<span class="bad">{{ icon("circle-alert") }} Last sync failed: {{ last_sync.error }}</span>
+        {% else %}{{ icon("refresh-cw") }} Synced with Bambuddy at {{ last_sync.at | fmt_when }}{% endif %}
+        {% if role == "admin" %} · <a href="/settings#bambuddy">Details</a>{% endif %}</p>
+      </div>
+    </section>
+  </div>
 
-<section class="card" id="sync">
-  {% include "_sync.html" %}
-</section>
+  <div class="stack-lg">
+    <section class="card">
+      <h2 class="card-title">Printing Now</h2>
+      <div hx-get="/partials/printing" hx-trigger="load, every 30s" hx-swap="innerHTML">
+        <p class="muted">{{ icon("loader-circle") }} Asking Bambuddy…</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 class="card-title">Demand</h2>
+        <a class="btn btn-ghost btn-sm" href="/demand">All Demand {{ icon("chevron-right") }}</a>
+      </div>
+      {% if plan %}
+      <ul class="list">
+        {% for p in plan %}
+        <li>
+          <a class="item item-link" href="/demand/{{ p.demand.slug }}">
+            <div class="item-main">
+              <div class="item-title">{{ p.demand.name }}</div>
+              <div class="item-meta"><span>{{ p.demand.due | fmt_date }} · {% if p.days < 0 %}<span class="bad">date passed</span>{% elif p.days == 0 %}today{% else %}in {{ p.days }} days{% endif %}</span>
+                <span>{{ p.demand.total }} {{ settings.unit() }}</span></div>
+            </div>
+            {% if not p.short %}{{ pill("good", "Covered", "circle-check") }}
+            {% elif p.at_risk %}{{ pill("bad", p.short ~ " short", "triangle-alert") }}
+            {% else %}{{ pill("warn", p.short ~ " to print", "clock") }}{% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">No open orders, events or restock targets.</p>
+      {% endif %}
+      <p class="help mt"><a href="/stock">{{ on_hand }} finished {{ settings.unit() }} on hand</a></p>
+    </section>
+  </div>
+</div>
 {% endblock %}

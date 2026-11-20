@@ -88,8 +88,8 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
         _, problem = await files.lock(st, code, description=description.strip() or None, by=user["username"])
         p = store.plate(code)
         msg = f"Plate {code} v{p.version} locked"
-        msg += f", but not in Bambuddy yet: {problem}" if problem else " and in File Manager"
-        return ctx.back(f"/plates/{code}", msg)
+        msg += f", but not in File Manager yet: {problem}" if problem else " and in File Manager"
+        return ctx.back(f"/plates/{code}", msg, "warn" if problem else "")
 
     @app.get("/plates/{code}", response_class=HTMLResponse)
     async def plate_page(request: Request, code: str):
@@ -108,7 +108,8 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
         if not store.plate(code):
             raise HTTPException(404, "No such plate")
         problem = await files.retire(code)
-        return ctx.back(f"/plates/{code}", f"Plate {code} retired" + (f"; {problem}" if problem else ""))
+        return ctx.back(f"/plates/{code}", f"Plate {code} retired" + (f"; {problem}" if problem else ""),
+                        "warn" if problem else "")
 
     @app.post("/plates/{code}/publish")
     async def publish_plate(request: Request, code: str):
@@ -116,7 +117,7 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
         if not store.plate(code.upper()):
             raise HTTPException(404, "No such plate")
         problem = await files.publish(code.upper())
-        return ctx.back(f"/plates/{code.upper()}", problem or "In File Manager")
+        return ctx.back(f"/plates/{code.upper()}", problem or "Uploaded to File Manager", "bad" if problem else "")
 
     @app.post("/plates/{code}/runs")
     async def log_run(request: Request, code: str, date: str = Form(...), outcome: str = Form("ok"),

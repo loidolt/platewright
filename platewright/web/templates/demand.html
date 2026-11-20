@@ -1,33 +1,40 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_head, empty, pill, demand_status %}
 {% block title %}Demand · Platewright{% endblock %}
 {% block content %}
-<div class="title-row">
-  <h1>Demand</h1>
-  {% if role == "admin" %}<a class="btn btn-accent" href="/demand/new">Add</a>{% endif %}
-</div>
-<p class="muted">Orders, events and restock targets. {{ settings.unit() | capitalize }} on hand go to the earliest first.</p>
+{% call page_head("Demand", "clipboard-list", "Orders, events and restock targets. " ~ (settings.unit() | capitalize) ~ " on hand go to the earliest first.") %}
+  {% if role == "admin" %}<a class="btn btn-primary" href="/demand/new">{{ icon("plus") }} Add Demand</a>{% endif %}
+{% endcall %}
+
+{% if not plan %}
+<section class="card">
+  {% call empty("clipboard-list", "Nothing open", "Add an order, an event or a restock target to see how much stock covers it and how many plates are still needed.") %}
+    {% if role == "admin" %}<a class="btn btn-primary" href="/demand/new">{{ icon("plus") }} Add Demand</a>{% endif %}
+  {% endcall %}
+</section>
+{% endif %}
+
+<div class="cards wide">
 {% for p in plan %}
 {% set d = p.demand %}
-<a class="card demand-card" href="/demand/{{ d.slug }}">
-  <h2>{{ d.name }} <span class="pill">{{ d.kind }}</span></h2>
-  <p>{{ d.due | fmt_date }} ·
-    {% if p.days < 0 %}<span class="bad">{{ -p.days }} days ago</span>{% elif p.days == 0 %}today{% else %}in {{ p.days }} days{% endif %}
-    · {{ d.total }} {{ settings.unit() }}{% if p.delivered %} · {{ p.delivered }} out so far{% endif %}</p>
-  <progress value="{{ d.total - p.short }}" max="{{ d.total }}"></progress>
-  <p>{% if not p.short %}<span class="good">Covered by stock on hand.</span>
-    {% else %}{{ p.covered }} from stock, <strong>short {{ p.short }}</strong> ≈ {{ p.plates }} plates;
-      with earlier demand {{ p.cumulative_plates }} plates vs {{ p.slots | round(1) }} plate slots before the date
-      {% if p.no_plate %}<span class="pill bad">no plate makes some of it</span>
-      {% elif p.at_risk %}<span class="pill bad">not enough time</span>{% else %}<span class="pill good">on track</span>{% endif %}
-    {% endif %}</p>
+<a class="card tile" href="/demand/{{ d.slug }}">
+  <div class="tile-title"><span>{{ d.name }}</span>{{ demand_status(p) }}</div>
+  <div class="tile-meta">
+    <span>{{ icon("calendar-check") }} {{ d.due | fmt_date }} · {% if p.days < 0 %}<span class="bad">{{ -p.days }} days ago</span>{% elif p.days == 0 %}today{% else %}in {{ p.days }} days{% endif %}</span>
+    <span>{{ icon("box") }} {{ d.total }} {{ settings.unit() }}</span>
+    <span>{{ d.kind | capitalize }}</span>
+  </div>
+  <progress class="{{ 'bad' if p.at_risk else '' }}" value="{{ d.total - p.short }}" max="{{ d.total }}"></progress>
+  <p class="small secondary">{% if not p.short %}Covered by stock on hand{% if p.delivered %}, {{ p.delivered }} out so far{% endif %}.
+    {% else %}{{ d.total - p.short }} of {{ d.total }} covered. <strong>{{ p.short }} to print</strong>, about {{ p.plates }} plate{{ "" if p.plates == 1 else "s" }}.{% endif %}</p>
 </a>
-{% else %}
-<section class="card"><p class="muted">Nothing open.</p></section>
 {% endfor %}
+</div>
+
 {% if done %}
-<section class="card">
-  <h2>Done</h2>
-  <ul class="list">{% for d in done %}<li><a href="/demand/{{ d.slug }}">{{ d.name }}</a><span class="muted small">{{ d.due | fmt_date }}</span></li>{% endfor %}</ul>
+<section class="card mt">
+  <h2 class="card-title">Done</h2>
+  <ul class="list">{% for d in done %}<li><a class="item item-link" href="/demand/{{ d.slug }}"><span class="item-title">{{ d.name }}</span><span class="help">{{ d.due | fmt_date }}</span></a></li>{% endfor %}</ul>
 </section>
 {% endif %}
 {% endblock %}

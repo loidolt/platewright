@@ -132,7 +132,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             n = await ctx.extra["messenger"].send("Platewright test", "If you read this on your phone, app messages "
                                                   "reach you through Bambuddy.", "/settings")
         except BambuddyError as exc:
-            return ctx.back("/settings", f"Bambuddy refused: {exc}")
-        return ctx.back("/settings", f"Sent to {n} channel{'' if n == 1 else 's'}" if n else
-                        "Bambuddy has no channel with \"Messages from connected apps\" on")
+            return ctx.back("/settings", f"Bambuddy refused: {exc}", "bad")
+        if not n:
+            return ctx.back("/settings", "Bambuddy has no channel with \"Messages from connected apps\" on", "warn")
+        return ctx.back("/settings", f"Sent to {n} channel{'' if n == 1 else 's'}")
 

@@ -1,31 +1,48 @@
 {% extends "base.html" %}
-{% from "_macros.html" import bb_link, mix %}
+{% from "_macros.html" import mix, page_head, empty, pill, thumb %}
 {% block title %}Plates · Platewright{% endblock %}
 {% block content %}
-<div class="title-row">
-  <h1>Plates</h1>
-  {% if role == "admin" %}<a class="btn btn-accent" href="/plates/new">New plate</a>{% endif %}
-</div>
+{% call page_head("Plates", "layout-grid", "Checked, locked plate files. Only these count as production prints.") %}
+  {% if role == "admin" %}<a class="btn btn-primary" href="/plates/new">{{ icon("plus") }} New Plate</a>{% endif %}
+{% endcall %}
+
+{% set active = plates | selectattr("active") | list %}
+{% set retired = plates | rejectattr("active") | list %}
+
 {% if not plates %}
 <section class="card">
-  <p>No plates locked yet.</p>
-  <p class="muted">A plate is a sliced file that passed the checks (printer, palette, test-printed models,
-    license, hours) and was locked as a version. Only locked plates go to the printer.</p>
+  {% call empty("layout-grid", "No plates yet", "A plate is a sliced file that passed the checks (printer, palette, test-printed models, license, hours) and was locked as a version. Only locked plates go to the printer.") %}
+    {% if role == "admin" %}<a class="btn btn-primary" href="/plates/new">{{ icon("plus") }} New Plate</a>{% endif %}
+  {% endcall %}
 </section>
 {% endif %}
-{% for p in plates %}
-<section class="card{% if not p.active %} retired{% endif %}">
-  <h2><a href="/plates/{{ p.code }}">Plate {{ p.code }}</a> <span class="muted">v{{ p.version }}</span>
-    {% if not p.active %}<span class="pill">retired</span>{% endif %}</h2>
-  {% if p.description %}<p>{{ p.description }}</p>{% endif %}
-  <dl class="facts">
-    <dt>Makes</dt><dd>{{ p.units }} {{ settings.unit() }}: {{ mix(p.mix, models) }}</dd>
-    <dt>Time</dt><dd>{{ p.hours }} h · {{ p.min_per_unit }} min per {{ settings.unit(1) }}</dd>
-    <dt>Filament</dt><dd>{{ p.grams }} g · {{ p.g_per_unit }} g per {{ settings.unit(1) }} · {{ p.color_changes }} color changes</dd>
-    <dt>Printer</dt><dd>{{ p.printer_model or "unknown" }}{% if p.nozzle %}, {{ p.nozzle }} mm nozzle{% endif %}</dd>
-  </dl>
-  {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}
-  {% elif p.active %}<p class="warn small">Not in File Manager yet.</p>{% endif %}
-</section>
-{% endfor %}
+
+{% macro plate_tile(p) %}
+<a class="card tile has-thumb{% if not p.active %} retired{% endif %}" href="/plates/{{ p.code }}">
+  {{ thumb(p.bambuddy_file_id, "", "layout-grid") }}
+  <div>
+    <div class="tile-title"><span>Plate {{ p.code }} <span class="muted">v{{ p.version }}</span></span>
+      {% if not p.active %}{{ pill("", "Retired") }}
+      {% elif not p.bambuddy_file_id %}{{ pill("warn", "Not in File Manager", "circle-alert") }}{% endif %}</div>
+    {% if p.description %}<p class="secondary">{{ p.description }}</p>{% endif %}
+  </div>
+  <div class="tile-meta">
+    <span>{{ icon("box") }} {{ p.units }} {{ settings.unit(p.units) }}</span>
+    <span>{{ icon("clock") }} {{ p.hours }} h</span>
+    <span>{{ icon("disc-3") }} {{ p.g_per_unit }} g each</span>
+  </div>
+  <p class="help">{{ mix(p.mix, models) }}{% if p.printer_model %} · {{ p.printer_model }}{% endif %}</p>
+</a>
+{% endmacro %}
+
+{% if active %}
+<div class="cards">{% for p in active %}{{ plate_tile(p) }}{% endfor %}</div>
+{% elif plates %}
+<section class="card"><p class="muted">No active plates. Lock a new one, or a new version of a retired one.</p></section>
+{% endif %}
+
+{% if retired %}
+<h2 class="card-title mt">Retired</h2>
+<div class="cards mt">{% for p in retired %}{{ plate_tile(p) }}{% endfor %}</div>
+{% endif %}
 {% endblock %}

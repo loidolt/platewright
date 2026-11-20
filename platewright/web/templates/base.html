@@ -19,25 +19,36 @@
 </head>
 <body>
   {% if user %}
-  <nav class="tabs" aria-label="Platewright">
-    <a href="/" {% if nav == "today" %}aria-current="page"{% endif %}>Today</a>
-    <a href="/demand" {% if nav == "demand" %}aria-current="page"{% endif %}>Demand</a>
-    <a href="/plates" {% if nav == "plates" %}aria-current="page"{% endif %}>Plates</a>
-    <a href="/models" {% if nav == "models" %}aria-current="page"{% endif %}>Models</a>
-    <a href="/stock" {% if nav == "stock" %}aria-current="page"{% endif %}>Stock</a>
-    <a href="/filament" {% if nav == "filament" %}aria-current="page"{% endif %}>Filament</a>
-    {% if role == "admin" %}<a href="/settings" {% if nav == "settings" %}aria-current="page"{% endif %}>Settings</a>{% endif %}
-  </nav>
+  <header class="appbar">
+    <nav class="tabs" aria-label="Platewright">
+      {% for key, href, label, ico in [
+          ("today", "/", "Today", "calendar-check"),
+          ("demand", "/demand", "Demand", "clipboard-list"),
+          ("plates", "/plates", "Plates", "layout-grid"),
+          ("models", "/models", "Models", "box"),
+          ("stock", "/stock", "Stock", "package"),
+          ("filament", "/filament", "Filament", "disc-3"),
+          ("settings", "/settings", "Settings", "settings")] %}
+      {% if key != "settings" or role == "admin" %}
+      <a href="{{ href }}" {% if nav == key %}aria-current="page"{% endif %}>{{ icon(ico) }}<span>{{ label }}</span></a>
+      {% endif %}
+      {% endfor %}
+    </nav>
+  </header>
   {% endif %}
-  <main class="wrap">
-    {% if notice %}<p class="notice-bar" role="status">{{ notice }}</p>{% endif %}
+  <main class="page">
     {% block content %}{% endblock %}
   </main>
   {% if user %}
-  <footer class="wrap foot">
-    <span>{{ user.username }} · {{ role }}</span>
-    <form method="post" action="/auth/logout"><button class="link" type="submit">Sign out</button></form>
+  <footer class="foot">
+    <span>{{ icon("user") }} {{ user.username }} · {{ role }}</span>
+    <form method="post" action="/auth/logout"><button class="btn btn-ghost btn-sm" type="submit">{{ icon("log-out") }} Sign Out</button></form>
   </footer>
   {% endif %}
+  <div class="toasts" aria-live="polite">
+    {% if notice %}<div class="toast {{ notice_tone }}" {% if notice_tone == "bad" %}role="alert"{% else %}role="status"{% endif %} data-toast>
+      {{- icon({"bad": "circle-x", "warn": "circle-alert"}.get(notice_tone, "circle-check")) }}<span>{{ notice }}</span>
+      <button type="button" data-dismiss aria-label="Close">{{ icon("x") }}</button></div>{% endif %}
+  </div>
 </body>
 </html>

@@ -54,7 +54,7 @@ class BadgeReporter:
             self.state.error = _explain(exc.response)
             logger.warning("Badge report refused: %s", self.state.error)
         except httpx.HTTPError as exc:
-            self.state.error = f"Bambuddy unreachable: {type(exc).__name__}"
+            self.state.error = f"can't reach Bambuddy ({type(exc).__name__})"
             logger.warning("Badge report failed: %s", self.state.error)
         else:
             self.state.error = None

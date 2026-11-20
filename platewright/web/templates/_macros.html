@@ -1,5 +1,43 @@
-{% macro bb_link(path, label, cls="") -%}
-<a class="{{ cls }}" href="{{ config.bambuddy_url }}{{ path }}" target="_blank" rel="noopener" data-bambuddy-path="{{ path }}">{{ label }}</a>
+{# Shared pieces, after Bambuddy's components (see "Design rules" in the design doc). #}
+
+{# A link to one of Bambuddy's own pages; inside the frame it switches Bambuddy's page instead. #}
+{% macro bb_link(path, label, cls="", ico="external-link") -%}
+<a class="{{ cls }}" href="{{ config.bambuddy_url }}{{ path }}" target="_blank" rel="noopener" data-bambuddy-path="{{ path }}"
+  {%- if cls and "btn" in cls %} title="Open {{ label }} in Bambuddy"{% endif %}>
+  {%- if cls and "btn" in cls %}{{ icon(ico) }}<span class="lbl">{{ label }}</span>{% else %}{{ label }} {{ icon(ico) }}{% endif -%}
+</a>
+{%- endmacro %}
+
+{# The page title row: icon, title, subtitle, and the page's buttons (primary last). #}
+{% macro page_head(title, ico, sub="", back=None) -%}
+{% if back %}<a class="back" href="{{ back[0] }}">{{ icon("arrow-left") }} {{ back[1] }}</a>{% endif %}
+<div class="page-head">
+  <div>
+    <h1>{% if ico %}{{ icon(ico) }}{% endif %}{{ title }}</h1>
+    {% if sub %}<p class="sub">{{ sub }}</p>{% endif %}
+  </div>
+  {% if caller %}<div class="actions">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{# A labelled field: label above, the control, help text below. #}
+{% macro field(label, help="", opt=false, cls="") -%}
+<label class="field {{ cls }}"><span class="label">{{ label }}{% if opt %} <span class="opt">(optional)</span>{% endif %}</span>
+  {{ caller() }}
+  {%- if help %}<span class="help">{{ help }}</span>{% endif %}</label>
+{%- endmacro %}
+
+{% macro empty(ico, title, text="") -%}
+<div class="empty">
+  <div class="well">{{ icon(ico) }}</div>
+  <h3>{{ title }}</h3>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  {% if caller %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro pill(kind, text, ico="") -%}
+<span class="pill {{ kind }}">{% if ico %}{{ icon(ico) }}{% endif %}{{ text }}</span>
 {%- endmacro %}
 
 {% macro model_name(slug, models) -%}
@@ -12,23 +50,39 @@
 {%- for slug, n in m.items() -%}{{ model_name(slug, models) }} ×{{ n }}{% if not loop.last %}, {% endif %}{%- endfor -%}
 {%- endmacro %}
 
+{# A run's result: Bambuddy's good / reject verdict, or how it ended. #}
 {% macro outcome(run) -%}
-{%- if run.outcome == "ok" and run.verdict == "good" -%}<span class="pill good">good</span>
-{%- elif run.outcome == "ok" and run.source == "manual" -%}<span class="pill">logged by hand</span>
-{%- elif run.outcome == "ok" -%}<span class="pill warn">no verdict</span>
-{%- elif run.outcome == "rejected" -%}<span class="pill bad">rejected</span>
-{%- else -%}<span class="pill bad">{{ run.outcome }}</span>{%- endif -%}
+{%- if run.outcome == "ok" and run.verdict == "good" -%}{{ pill("good", "Good", "circle-check") }}
+{%- elif run.outcome == "ok" and run.source == "manual" -%}{{ pill("", "Logged by hand", "hand") }}
+{%- elif run.outcome == "ok" -%}{{ pill("warn", "No verdict", "clock") }}
+{%- elif run.outcome == "rejected" -%}{{ pill("bad", "Rejected", "circle-x") }}
+{%- elif run.outcome == "aborted" -%}{{ pill("bad", "Stopped early", "ban") }}
+{%- elif run.outcome == "failed" -%}{{ pill("bad", "Failed", "circle-x") }}
+{%- else -%}{{ pill("bad", run.outcome | capitalize, "circle-x") }}{%- endif -%}
 {%- endmacro %}
 
 {% macro model_badges(m) -%}
-<p class="pills">
-  {% if m.status == "qualified" %}<span class="pill good">test print passed</span>
-  {% elif m.status == "failed-test" %}<span class="pill bad">test print failed</span>
-  {% else %}<span class="pill warn">not test-printed</span>{% endif %}
-  {% if m.distribution_ok == "yes" %}<span class="pill good">may hand out</span>
-  {% elif m.distribution_ok == "no" %}<span class="pill bad">may not hand out</span>
-  {% else %}<span class="pill warn">license unchecked</span>{% endif %}
-  {% if m.min_age is not none %}<span class="pill">{{ m.min_age }}+</span>{% endif %}
-  {% if m.small_parts == "yes" %}<span class="pill warn">small parts</span>{% endif %}
-</p>
+<div class="pills">
+  {% if m.status == "qualified" %}{{ pill("good", "Test print passed", "circle-check") }}
+  {% elif m.status == "failed-test" %}{{ pill("bad", "Test print failed", "circle-x") }}
+  {% else %}{{ pill("warn", "Not test-printed", "clock") }}{% endif %}
+  {% if m.distribution_ok == "yes" %}{{ pill("good", "May hand out", "check") }}
+  {% elif m.distribution_ok == "no" %}{{ pill("bad", "May not hand out", "ban") }}
+  {% else %}{{ pill("warn", "License unchecked", "circle-alert") }}{% endif %}
+  {% if m.min_age is not none %}{{ pill("", "Ages " ~ m.min_age ~ "+") }}{% endif %}
+  {% if m.small_parts == "yes" %}{{ pill("warn", "Small parts", "triangle-alert") }}{% endif %}
+</div>
+{%- endmacro %}
+
+{# A plate or model's File Manager thumbnail, or a placeholder. #}
+{% macro thumb(file_id, cls="", ico="box") -%}
+<div class="thumb {{ cls }}">{% if file_id %}<img src="/thumb/{{ file_id }}" alt="" loading="lazy">{% else %}{{ icon(ico) }}{% endif %}</div>
+{%- endmacro %}
+
+{# Where a demand stands: covered by stock, on track, or at risk (late, no plate, or too few plate slots). #}
+{% macro demand_status(p) -%}
+{%- if not p.short -%}{{ pill("good", "Covered", "circle-check") }}
+{%- elif p.no_plate -%}{{ pill("bad", "No plate for some", "ban") }}
+{%- elif p.at_risk -%}{{ pill("bad", "At risk", "triangle-alert") }}
+{%- else -%}{{ pill("info", "On track", "clock") }}{%- endif -%}
 {%- endmacro %}

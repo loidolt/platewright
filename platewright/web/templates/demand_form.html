@@ -1,25 +1,39 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_head, field %}
 {% block title %}{{ d.name if d else "Add demand" }} · Platewright{% endblock %}
 {% block content %}
-<p><a href="{{ '/demand/' ~ d.slug if d else '/demand' }}">← {{ d.name if d else "Demand" }}</a></p>
-<h1>{{ "Edit " ~ d.name if d else "Add an order, event or restock target" }}</h1>
-<form method="post" action="{{ '/demand/' ~ d.slug ~ '/edit' if d else '/demand' }}" class="card stack">
-  <label>Name <input type="text" name="name" required value="{{ d.name if d else '' }}" placeholder="e.g. Spring fair"></label>
-  <div class="row">
-    <label>Kind <select name="kind">{% for k in ["event", "order", "restock"] %}<option value="{{ k }}" {% if d and d.kind == k %}selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
-    <label>Needed by <input type="date" name="due" required value="{{ d.due if d else '' }}"></label>
-    <label>Total <span class="muted small">0 = the needs below added up</span>
-      <input type="number" name="target" min="0" value="{{ d.target if d else 0 }}" inputmode="numeric"></label>
-  </div>
-  {% if models %}
-  <fieldset>
-    <legend>Needed per model <span class="muted small">optional; the rest of the total can be any model</span></legend>
-    <div class="row">
-      {% for m in models %}<label>{{ m.name }} <input type="number" name="need_{{ m.slug }}" min="0" value="{{ needs.get(m.slug, '') }}" inputmode="numeric"></label>{% endfor %}
+{{ page_head("Edit " ~ d.name if d else "Add Demand", "clipboard-list", "" if d else "An order, an event or a restock target.",
+             back=(("/demand/" ~ d.slug, d.name) if d else ("/demand", "Demand"))) }}
+<form method="post" action="{{ '/demand/' ~ d.slug ~ '/edit' if d else '/demand' }}" class="stack-lg">
+  <section class="card stack">
+    <div class="form-grid three">
+      {% call field("Name", cls="full") %}<input type="text" name="name" required value="{{ d.name if d else '' }}" placeholder="e.g. Spring fair">{% endcall %}
+      {% call field("Kind") %}
+        <select name="kind">{% for k in ["event", "order", "restock"] %}<option value="{{ k }}" {% if d and d.kind == k %}selected{% endif %}>{{ k | capitalize }}</option>{% endfor %}</select>
+      {% endcall %}
+      {% call field("Needed by") %}<input type="date" name="due" required value="{{ d.due if d else '' }}">{% endcall %}
+      {% call field("Total " ~ settings.unit(), "Leave 0 to use the sum of the numbers per model.") %}
+        <input type="number" name="target" min="0" value="{{ d.target if d else 0 }}" inputmode="numeric">
+      {% endcall %}
     </div>
-  </fieldset>
+  </section>
+  {% if models %}
+  <section class="card stack">
+    <h2 class="card-title">Per Model <span class="help">optional</span></h2>
+    <p class="help">Only for models that must be in it. The rest of the total can be any model.</p>
+    <div class="form-grid three">
+      {% for m in models %}
+      {% call field(m.name) %}<input type="number" name="need_{{ m.slug }}" min="0" value="{{ needs.get(m.slug, '') }}" inputmode="numeric">{% endcall %}
+      {% endfor %}
+    </div>
+  </section>
   {% endif %}
-  <label>Notes <textarea name="notes" rows="2">{{ d.notes if d else '' }}</textarea></label>
-  <div><button class="btn btn-accent" type="submit">{{ "Save" if d else "Add" }}</button></div>
+  <section class="card stack">
+    {% call field("Notes", opt=true) %}<textarea name="notes" rows="2">{{ d.notes if d else '' }}</textarea>{% endcall %}
+  </section>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{ icon("check") }} {{ "Save" if d else "Add Demand" }}</button>
+    <a class="btn btn-ghost" href="{{ '/demand/' ~ d.slug if d else '/demand' }}">Cancel</a>
+  </div>
 </form>
 {% endblock %}

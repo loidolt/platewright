@@ -168,7 +168,7 @@ def test_add_edit_and_test_print_a_model(client, fake, store):
     client.post("/models/091-rowan/test", data={"result": "pass", "notes": "clean"})
     assert store.model("091-rowan")["status"] == "qualified"
     page = client.get("/models/091-rowan").text
-    assert "test print passed" in page and "clean" in page and 'src="/thumb/50"' in page
+    assert "Test print passed" in page and "clean" in page and 'src="/thumb/50"' in page
     assert client.get("/thumb/50").headers["content-type"] == "image/png"
 
 
@@ -186,10 +186,12 @@ def test_check_link_lock_and_publish(client, fake, store):
     r = client.post("/plates/new", files={"file": ("mix.gcode.3mf", data)})
     sha = r.headers["location"].rsplit("/", 1)[1]
     page = client.get(f"/plates/new/{sha}").text
-    assert "not linked to a registered model" in page and "'Mystery' ×2 is" in page
+    assert "Slicer objects not linked to a registered model" in page and "<strong>'Mystery'</strong>" in page
     assert client.post(f"/plates/new/{sha}/lock", data={"code": "M"}).status_code == 400  # blocked
     client.post(f"/plates/new/{sha}/alias", data={"name": "Mystery", "model": "nunu"})
-    assert "Everything checks out" in client.get(f"/plates/new/{sha}").text
+    assert 'name="allow_untested"' in page and 'name="allow_unmapped"' not in page  # only the overrides that apply
+    checked = client.get(f"/plates/new/{sha}").text
+    assert "Everything checks out" in checked and "Lock anyway" not in checked
     r = client.post(f"/plates/new/{sha}/lock", data={"code": "m", "description": "mix"})
     assert r.headers["location"].startswith("/plates/M?notice=") and "File+Manager" in r.headers["location"]
     p = store.plate("M")
@@ -209,7 +211,7 @@ def test_new_version_moves_the_old_file_out_and_retire(client, fake, store):
     retired = next(f["id"] for f in fake.folders if f["name"] == "Retired plates")
     assert fake.files[v1.bambuddy_file_id]["folder_id"] == retired
     assert fake.files[v2.bambuddy_file_id]["folder_id"] != retired
-    assert "Earlier versions" in client.get("/plates/N").text
+    assert "Earlier Versions" in client.get("/plates/N").text
     client.post("/plates/N/retire")
     assert not store.plate("N").active and fake.files[v2.bambuddy_file_id]["folder_id"] == retired
 
@@ -234,12 +236,27 @@ def test_upload_failure_leaves_the_plate_locked(client, fake, store):
     fake.handler = no_library
     client.app.state.ctx.bambuddy._http._transport = httpx.MockTransport(no_library)
     r, _ = lock_via_web(client)
-    assert "not+in+Bambuddy+yet" in r.headers["location"] and "permission" in r.headers["location"]
+    assert "not+in+File+Manager+yet" in r.headers["location"] and "permission" in r.headers["location"]
+    assert r.headers["location"].endswith("&tone=warn")
     assert store.plate("N").bambuddy_file_id is None
-    assert "Put it in File Manager" in client.get("/plates/N").text
+    assert "Upload to File Manager" in client.get("/plates/N").text
 
 
 # -- review and runs ------------------------------------------------------------------------
+
+def test_mark_all_good_confirms_only_the_prints_on_the_page(client, fake, store):
+    sign_in(client, fake)
+    lock_via_web(client)
+    fake.archives = {10: {"content_hash": PLATE_SHA}}
+    fake.entries = [entry(1, archive_id=10), entry(2, archive_id=10)]
+    client.post("/sync")
+    first, second = store.to_review()
+    r = client.post("/runs/review-all", data={"ids": f"{first.id},x"}, follow_redirects=False)
+    assert r.status_code == 303 and "1+print+marked+all+good" in r.headers["location"]
+    assert [x.id for x in store.to_review()] == [second.id] and store.run(first.id).good == 4
+    assert client.post("/runs/review-all", data={"ids": str(second.id)}, follow_redirects=False).status_code == 303
+    assert not store.to_review()
+
 
 def test_review_records_bad_parts_and_clears_the_badge(client, fake, store):
     sign_in(client, fake)
@@ -250,7 +267,7 @@ def test_review_records_bad_parts_and_clears_the_badge(client, fake, store):
     assert fake.badges[-1]["count"] == 1
     (run,) = store.to_review()
     r = client.post(f"/runs/{run.id}/review", data={"bad_nunu": "1"}, headers={"HX-Request": "true"})
-    assert r.status_code == 200 and "<strong>3</strong> / 4 good" in r.text and "Reviewed" in r.text
+    assert r.status_code == 200 and "<strong class=\"good\">3</strong>&nbsp;of 4 good" in r.text and "Reviewed" in r.text
     assert not store.to_review() and store.stock()["nunu"]["made"] == 3
     assert client.post(f"/runs/{run.id}/review", data={"bad_nunu": "9"}).status_code == 400
     client.post("/sync")
@@ -297,7 +314,7 @@ def test_demand_coverage_and_queue(client, fake, store):
                                      "target": "20", "need_nunu": "10"})
     assert r.headers["location"].startswith("/demand/christmas-outreach")
     page = client.get("/demand/christmas-outreach").text
-    assert "short" in page.lower() and "≈ 3 × plate N" in page
+    assert "To print" in page and "about 3 × plate N" in page
     r = client.post("/demand/christmas-outreach/queue", data={"plate": "N", "times": "5"})
     assert "Queued+plate+N" in r.headers["location"]
     (q,) = fake.queue
@@ -448,7 +465,10 @@ def test_makerworld_link_fills_designer_license_and_file(client, fake, store):
     assert 'hx-post="/makerworld/lookup"' in client.get("/models/new").text
     r = client.post("/makerworld/lookup", data={"url": KRIN, "designer": "", "license": "", "bambuddy_file_id": ""})
     assert r.status_code == 200
-    assert "Zookis - Krin (green fox) #93 by enr · Standard Digital File License" in r.text
+    assert "<strong>Zookis - Krin (green fox) #93</strong> by enr · Standard Digital File License" in r.text
+    assert 'id="f-name" required value="Zookis - Krin (green fox) #93" hx-swap-oob="true"' in r.text
+    typed = client.post("/makerworld/lookup", data={"url": KRIN, "name": "Krin"}).text
+    assert 'id="f-name"' not in typed  # a typed name is kept
     assert 'id="f-designer" value="enr" hx-swap-oob="true"' in r.text
     assert 'value="Standard Digital File License" hx-swap-oob="true"' in r.text
     assert 'id="f-file" hx-swap-oob="true"' in r.text and '<option value="50" selected>' in r.text

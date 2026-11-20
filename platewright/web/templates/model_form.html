@@ -1,42 +1,74 @@
 {% extends "base.html" %}
+{% from "_macros.html" import page_head, field %}
+{% from "_model_inputs.html" import name_input, designer_input, license_input, file_select %}
 {% block title %}{{ model.name if model else "New model" }} · Platewright{% endblock %}
 {% block content %}
-{% from "_model_inputs.html" import designer_input, license_input, file_select %}
-<p><a href="{{ '/models/' ~ model.slug if model else '/models' }}">← {{ model.name if model else "Models" }}</a></p>
-<h1>{{ "Edit " ~ model.name if model else "Add a model" }}</h1>
-<form method="post" action="{{ '/models/' ~ model.slug if model else '/models' }}" class="card stack">
-  <label>Name <input type="text" name="name" required value="{{ model.name if model else '' }}"></label>
-  <label>Catalog number or code <span class="muted small">optional, e.g. 91</span>
-    <input type="text" name="ref" value="{{ model.ref if model else '' }}"{% if model %} readonly{% endif %}></label>
-  <label>Source link <span class="muted small">a MakerWorld link fills in the designer and license</span>
-    <input type="url" name="url" placeholder="https://makerworld.com/…" value="{{ model.url if model else '' }}"
-      hx-post="/makerworld/lookup" hx-trigger="change"
-      hx-target="#mw-note" hx-swap="innerHTML">
-    <span id="mw-note" class="muted small" aria-live="polite"></span></label>
-  <label>Designer {{ designer_input(model.designer if model else '') }}</label>
-  <label>License <span class="muted small">as the model page states it</span>
-    {{ license_input(model.license if model else '') }}</label>
-  <label>May prints be handed out?
-    <select name="distribution_ok">
-      {% for v, t in [("unknown", "not checked"), ("yes", "yes, the license allows it"), ("no", "no")] %}
-      <option value="{{ v }}" {% if (model.distribution_ok if model else "unknown") == v %}selected{% endif %}>{{ t }}</option>
-      {% endfor %}
-    </select></label>
-  <div class="row">
-    <label>Youngest age <input type="number" name="min_age" min="0" max="99" inputmode="numeric" value="{{ model.min_age if model and model.min_age is not none else '' }}"></label>
-    <label>Small parts?
-      <select name="small_parts">
-        {% for v in ["unknown", "yes", "no"] %}<option value="{{ v }}" {% if (model.small_parts if model else "unknown") == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
-      </select></label>
-    <label>Slicer objects per {{ settings.unit(1) }} <input type="number" name="parts_per_unit" min="1" max="50" value="{{ model.parts_per_unit if model else 1 }}"></label>
+{{ page_head("Edit " ~ model.name if model else "Add Model", "box",
+             "" if model else "Paste the MakerWorld link first: it fills in the name, designer, license and source file.",
+             back=(("/models/" ~ model.slug, model.name) if model else ("/models", "Models"))) }}
+<form method="post" action="{{ '/models/' ~ model.slug if model else '/models' }}" class="stack-lg">
+  <section class="card stack">
+    <h2 class="card-title">{{ icon("folder-open") }} Source</h2>
+    <label class="field"><span class="label">MakerWorld or other source link <span class="opt">(optional)</span></span>
+      <input type="url" name="url" placeholder="https://makerworld.com/…" value="{{ model.url if model else '' }}"
+        hx-post="/makerworld/lookup" hx-trigger="change" hx-target="#mw-note" hx-swap="innerHTML" hx-include="closest form">
+      <span id="mw-note" class="help" aria-live="polite"></span></label>
+    <div class="form-grid">
+      <label class="field"><span class="label">Name</span>{{ name_input(model.name if model else '') }}</label>
+      {% call field("Catalog number or code", "e.g. 91. Can't be changed later." if not model else "", opt=true) %}
+        <input type="text" name="ref" value="{{ model.ref if model else '' }}"{% if model %} readonly{% endif %}>
+      {% endcall %}
+      <label class="field"><span class="label">Designer</span>{{ designer_input(model.designer if model else '') }}</label>
+      <label class="field"><span class="label">License</span>{{ license_input(model.license if model else '') }}
+        <span class="help">As the model page states it.</span></label>
+      <label class="field full"><span class="label">Source file in File Manager</span>
+        {{ file_select(files, model.bambuddy_file_id if model else none) }}
+        {% if files_error %}<span class="help bad">File Manager couldn't be read: {{ files_error }}</span>
+        {% elif not files %}<span class="help">No model files there yet: import one in Model Sources, or upload a .3mf in File Manager.</span>
+        {% else %}<span class="help">Its thumbnail shows here; File Manager keeps the file.</span>{% endif %}</label>
+    </div>
+  </section>
+
+  <section class="card stack">
+    <h2 class="card-title">{{ icon("triangle-alert") }} Handing Out</h2>
+    <div class="form-grid three">
+      {% call field("May prints be handed out?") %}
+        <select name="distribution_ok">
+          {% for v, t in [("unknown", "Not checked"), ("yes", "Yes, the license allows it"), ("no", "No")] %}
+          <option value="{{ v }}" {% if (model.distribution_ok if model else "unknown") == v %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      {% endcall %}
+      {% call field("Youngest age", opt=true) %}
+        <input type="number" name="min_age" min="0" max="99" inputmode="numeric" value="{{ model.min_age if model and model.min_age is not none else '' }}">
+      {% endcall %}
+      {% call field("Small parts?") %}
+        <select name="small_parts">
+          {% for v, t in [("unknown", "Not checked"), ("yes", "Yes"), ("no", "No")] %}<option value="{{ v }}" {% if (model.small_parts if model else "unknown") == v %}selected{% endif %}>{{ t }}</option>{% endfor %}
+        </select>
+      {% endcall %}
+    </div>
+  </section>
+
+  <section class="card stack">
+    <h2 class="card-title">{{ icon("layout-grid") }} In the Slicer</h2>
+    <div class="form-grid">
+      {% call field("Names the slicer gives it", 'One per line. Numbered copies ("Nunu 2") match on their own; the name above always matches.', opt=true) %}
+        <textarea name="aliases" rows="3">{{ model.aliases.split("\x1f") | join("\n") if model and model.aliases else "" }}</textarea>
+      {% endcall %}
+      {% call field("Slicer objects per " ~ settings.unit(1), "More than 1 when one " ~ settings.unit(1) ~ " is printed as several objects.") %}
+        <input type="number" name="parts_per_unit" min="1" max="50" value="{{ model.parts_per_unit if model else 1 }}" class="short">
+      {% endcall %}
+    </div>
+  </section>
+
+  <section class="card stack">
+    {% call field("Notes", opt=true) %}<textarea name="notes" rows="2">{{ model.notes if model else '' }}</textarea>{% endcall %}
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{ icon("check") }} {{ "Save" if model else "Add Model" }}</button>
+    <a class="btn btn-ghost" href="{{ '/models/' ~ model.slug if model else '/models' }}">Cancel</a>
   </div>
-  <label>Names the slicer gives it <span class="muted small">one per line; numbered copies ("Nunu 2") match on their own</span>
-    <textarea name="aliases" rows="3">{{ model.aliases.split("\x1f") | join("\n") if model and model.aliases else "" }}</textarea></label>
-  <label>Source file in File Manager
-    {{ file_select(files, model.bambuddy_file_id if model else none) }}
-    {% if files_error %}<span class="bad small">File Manager couldn't be read: {{ files_error }}</span>
-    {% elif not files %}<span class="muted small">No model files there yet: import from MakerWorld (Model Sources) or upload a .3mf in File Manager.</span>{% endif %}</label>
-  <label>Notes <textarea name="notes" rows="2">{{ model.notes if model else '' }}</textarea></label>
-  <div><button class="btn btn-accent" type="submit">{{ "Save" if model else "Add model" }}</button></div>
 </form>
 {% endblock %}

@@ -95,7 +95,7 @@ class Bambuddy:
                 },
             )
         except httpx.HTTPError as exc:
-            raise SignInError(f"Bambuddy unreachable: {type(exc).__name__}") from exc
+            raise SignInError(f"can't reach Bambuddy ({type(exc).__name__})") from exc
         if response.status_code != 200:
             raise SignInError(_error_code(response), response.status_code)
         user = response.json()["user"]
@@ -128,7 +128,7 @@ class Bambuddy:
             response = await self._http.get(path, params={k: v for k, v in params.items() if v is not None},
                                             headers={"X-API-Key": self.settings.bambuddy_key})
         except httpx.HTTPError as exc:
-            raise BambuddyError(f"Bambuddy unreachable: {type(exc).__name__}") from exc
+            raise BambuddyError(f"can't reach Bambuddy ({type(exc).__name__})") from exc
         if response.status_code != 200:
             raise BambuddyError(f"GET {path}: HTTP {response.status_code} {_error_code(response)}",
                                 response.status_code)
@@ -172,7 +172,7 @@ class Bambuddy:
                 params={k: v for k, v in (params or {}).items() if v is not None},
                 headers={"X-API-Key": self.settings.bambuddy_key})
         except httpx.HTTPError as exc:
-            raise BambuddyError(f"Bambuddy unreachable: {type(exc).__name__}") from exc
+            raise BambuddyError(f"can't reach Bambuddy ({type(exc).__name__})") from exc
         if response.status_code not in (200, 201):
             hint = " (does the API key have this permission?)" if response.status_code in (401, 403) else ""
             raise BambuddyError(f"{method} {path}: HTTP {response.status_code} {_error_code(response)}{hint}",
