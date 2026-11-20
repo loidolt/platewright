@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from platewright.bambuddy.client import BambuddyError
 from platewright.core.names import model_slug
 from platewright.core.plates import license_warning
-from platewright.web.context import Ctx
+from platewright.web.context import Ctx, to_int
 
 MODEL_EXTS = (".3mf", ".stl", ".step", ".stp", ".obj")
 
@@ -23,8 +23,7 @@ def _clean_url(url: str) -> str:
 
 
 def _int_or_none(text: str) -> int | None:
-    text = (text or "").strip()
-    return int(text) if text.isdigit() else None
+    return to_int(text)
 
 
 def register(app: FastAPI, ctx: Ctx) -> None:
@@ -105,7 +104,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         fields = form_fields(name, ref, url, designer, license, distribution_ok, min_age, small_parts,
                              parts_per_unit, bambuddy_file_id, notes)
         name = fields.pop("name")
-        store.add_model(slug, name, by=user["username"], aliases=tuple(a.strip() for a in aliases.splitlines() if a.strip()),
+        store.add_model(slug, name, by=user["username"], aliases=tuple(dict.fromkeys(a.strip() for a in aliases.splitlines() if a.strip())),
                         **fields)
         return ctx.back(f"/models/{slug}", f"{name} added. Test-print it before it goes on a production plate.")
 
@@ -137,6 +136,10 @@ def register(app: FastAPI, ctx: Ctx) -> None:
     async def thumbnail(request: Request, file_id: int):
         """Bambuddy's thumbnail of a library file, through the API key (the browser has none)."""
         ctx.user(request)
+        known = {r["bambuddy_file_id"] for r in store.models() if r["bambuddy_file_id"]}
+        known |= {p.bambuddy_file_id for p in store.plates() if p.bambuddy_file_id}
+        if file_id not in known:
+            return Response(status_code=404)
         try:
             r = await ctx.bambuddy._http.get(f"/library/files/{file_id}/thumbnail",
                                              headers={"X-API-Key": ctx.cfg.bambuddy_key})

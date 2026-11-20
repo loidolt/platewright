@@ -41,7 +41,7 @@
   {% if plates %}
   <div class="row">
     <label>Plate <select name="plate">{% for pl in plates %}<option value="{{ pl.code }}" {% if suggest == pl.code %}selected{% endif %}>{{ pl.code }} · {{ pl.units }}-up{% if pl.description %} · {{ pl.description }}{% endif %}</option>{% endfor %}</select></label>
-    <label>Times <input type="number" name="times" min="1" max="50" value="{{ p.plates if p and p.plates else 1 }}" inputmode="numeric"></label>
+    <label>Times <input type="number" name="times" min="1" max="50" value="{{ [p.plates, 50] | min if p and p.plates else 1 }}" inputmode="numeric"></label>
     {% if printers | length > 1 %}<label>Printer <select name="printer">{% for k in printers %}<option>{{ k }}</option>{% endfor %}</select></label>{% endif %}
   </div>
   <p class="muted small">Adds them to the Bambuddy project for {{ d.name }}{% if d.bambuddy_project_id %} ({{ bb_link("/projects/" ~ d.bambuddy_project_id, "project " ~ d.bambuddy_project_id) }}){% endif %}.

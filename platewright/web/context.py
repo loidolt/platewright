@@ -24,6 +24,12 @@ class LoginRequired(Exception):
         self.next_path = next_path
 
 
+def to_int(text, default: int | None = None) -> int | None:
+    """A whole number typed in a form; ``default`` when blank or not plain ASCII digits."""
+    text = str(text if text is not None else "").strip()
+    return int(text) if text.isascii() and text.isdigit() else default
+
+
 def safe_next(value: str | None) -> str:
     """Only a plain path on this site; "//host" and "/\\host" are other sites."""
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:

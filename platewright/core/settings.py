@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from platewright.core.palette import validate_palette
@@ -64,6 +65,20 @@ class Settings:
         out = validate_palette(self.palette)
         if not self.printers:
             out.append("no printers set up")
+        if not self.library_folder.strip() or not self.retired_folder.strip():
+            out.append("both Bambuddy folder names are needed")
+        elif self.library_folder.strip() == self.retired_folder.strip():
+            out.append("retired plates need a different Bambuddy folder than production plates")
+        if not (math.isfinite(self.assumed_fail_rate) and 0 <= self.assumed_fail_rate < 0.9):
+            out.append("the assumed fail rate must be 0 to 90 %")
+        for label, v in (("monthly target", self.period_target), ("longest plate", self.max_plate_hours),
+                         ("reorder days", self.reorder_days)):
+            if not math.isfinite(v) or v < 0:
+                out.append(f"{label} can't be negative")
+        for key, p in self.printers.items():
+            per = float(p.get("plates_per_day", 1))
+            if not math.isfinite(per) or per < 0:
+                out.append(f"printer {key}: plates per day can't be negative")
         return out
 
     def printer_key(self, bambuddy_name: str | None) -> str:

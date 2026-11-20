@@ -105,6 +105,11 @@ def read_sliced(source: str | IO[bytes], name: str = "plate", palette: dict | No
         names = z.namelist()
         if "Metadata/slice_info.config" not in names:
             raise _not_sliced(name, z, palette)
+        for info in z.infolist():
+            if info.file_size > 2 * 1024 * 1024 * 1024:
+                raise ThreeMFError(f"{name} holds a file over 2 GB unpacked; that isn't a plate.")
+        if z.getinfo("Metadata/slice_info.config").file_size > 50 * 1024 * 1024:
+            raise ThreeMFError(f"{name}: its slice info is implausibly large.")
         root = ET.fromstring(z.read("Metadata/slice_info.config"))
         plates = root.findall("plate")
         if not plates:

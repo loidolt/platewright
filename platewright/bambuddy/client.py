@@ -200,7 +200,11 @@ class Bambuddy:
                                files={"file": (filename, data, "application/octet-stream")}, timeout=300)
 
     async def move_files(self, file_ids: list[int], folder_id: int | None) -> None:
-        await self.send("POST", "/library/files/move", json={"file_ids": file_ids, "folder_id": folder_id})
+        res = await self.send("POST", "/library/files/move", json={"file_ids": file_ids, "folder_id": folder_id}) or {}
+        moved = res.get("moved")
+        if moved is not None and moved < len(file_ids):
+            # Bambuddy answers 200 for skipped files (not owner, read-only source, name taken).
+            raise BambuddyError(f"Bambuddy didn't move library file(s) {file_ids}: {res.get('skipped') or res}")
 
     async def create_project(self, body: dict) -> dict:
         return await self.send("POST", "/projects/", json=body)

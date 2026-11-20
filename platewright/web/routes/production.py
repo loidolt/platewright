@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from platewright.core.mix import ANY, UNLINKED
 from platewright.core.stock import NotEnough, allocate_out
-from platewright.web.context import Ctx
+from platewright.web.context import Ctx, to_int
 
 
 def _day(text: str) -> str:
@@ -45,10 +45,10 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         form = await request.form()
         failures: dict[str, int] = {}
         for key in list(run.planned_by_model) + [ANY]:
-            raw = str(form.get(f"bad_{key}", "0")).strip() or "0"
-            if not raw.isdigit():
+            n = to_int(form.get(f"bad_{key}", "") or "0")
+            if n is None:
                 raise HTTPException(400, "Bad parts are whole numbers")
-            failures[key] = int(raw)
+            failures[key] = n
         for key, n in failures.items():
             if key != ANY and n > run.planned_by_model.get(key, 0):
                 raise HTTPException(400, f"The plate only has {run.planned_by_model[key]} of those")

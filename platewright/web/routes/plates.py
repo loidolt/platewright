@@ -9,8 +9,8 @@ from fastapi.responses import HTMLResponse
 
 from platewright.core.mix import ANY
 from platewright.core.threemf import ThreeMFError
-from platewright.plates import CODE_RE, PlateFiles
-from platewright.web.context import Ctx
+from platewright.plates import CODE_RE, MAX_UPLOAD, PlateFiles
+from platewright.web.context import Ctx, to_int
 
 
 def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
@@ -30,7 +30,7 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
     @app.post("/plates/new", response_class=HTMLResponse)
     async def upload_plate(request: Request, file: UploadFile = File(...)):
         user = ctx.require(request, "admin")
-        data = await file.read()
+        data = await file.read(MAX_UPLOAD + 1)
         try:
             sha = files.stage(data, file.filename or "plate.gcode.3mf")
             files.staged(sha)  # parse now, so a project file is explained right away
@@ -58,7 +58,7 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
     async def staged_page(request: Request, sha: str, code: str = "", description: str = "", units: str = "",
                           allow_untested: str = "", allow_unmapped: str = ""):
         user = ctx.require(request, "admin")
-        return check_page(request, user, sha, code, description, int(units) if units.isdigit() else None,
+        return check_page(request, user, sha, code, description, to_int(units),
                           bool(allow_untested), bool(allow_unmapped))
 
     @app.post("/plates/new/{sha}/alias")
@@ -73,7 +73,7 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
     async def lock_plate(request: Request, sha: str, code: str = Form(...), description: str = Form(""),
                          units: str = Form(""), allow_untested: str = Form(""), allow_unmapped: str = Form("")):
         user = ctx.require(request, "admin")
-        n = int(units) if units.strip().isdigit() else None
+        n = to_int(units)
         try:
             st = files.staged(sha, units=n, allow_untested=bool(allow_untested), allow_unmapped=bool(allow_unmapped))
         except ThreeMFError as exc:
@@ -113,6 +113,8 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
     @app.post("/plates/{code}/publish")
     async def publish_plate(request: Request, code: str):
         ctx.require(request, "admin")
+        if not store.plate(code.upper()):
+            raise HTTPException(404, "No such plate")
         problem = await files.publish(code.upper())
         return ctx.back(f"/plates/{code.upper()}", problem or "In Bambuddy's library")
 
@@ -133,10 +135,12 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
             raise HTTPException(400, "That date is in the future")
         if outcome not in ("ok", "aborted", "failed"):
             raise HTTPException(400, "Unknown outcome")
-        bad_n = int(bad) if bad.strip().isdigit() else 0
+        bad_n = to_int(bad, 0)
         if bad_n > p.units:
             raise HTTPException(400, f"Plate {p.code} only has {p.units}")
-        pct = int(aborted_pct) if aborted_pct.strip().isdigit() else None
+        pct = to_int(aborted_pct)
+        if outcome == "aborted" and (pct is None or not 1 <= pct <= 99):
+            raise HTTPException(400, "For a run that stopped early, give how far it got: 1 to 99 %")
         printer = next(iter(store.settings().printers), "")
         store.add_manual_run(p.version_id, day.isoformat(), printer, outcome, aborted_pct=pct,
                              failures={ANY: bad_n} if bad_n and outcome == "ok" else None, notes=notes.strip(),

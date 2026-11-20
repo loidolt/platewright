@@ -195,7 +195,7 @@ class Store:
         with self.tx() as db:
             cur = db.execute(f"INSERT INTO models ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
                              (slug, name, now(), by, *fields.values()))
-            for a in aliases:
+            for a in dict.fromkeys(a.strip() for a in aliases if a.strip()):
                 db.execute("INSERT INTO model_aliases (model_id, alias) VALUES (?, ?)", (cur.lastrowid, a))
             return cur.lastrowid
 
@@ -487,7 +487,12 @@ class Store:
     def add_manual_run(self, version_id: int, date: str, printer: str, outcome: str, *, failures: dict | None = None,
                        aborted_pct: int | None = None, notes: str = "", by: str = "") -> int:
         v = self.one("SELECT hours, grams, filaments FROM plate_versions WHERE id = ?", version_id)
-        frac = (aborted_pct or 100) / 100 if outcome == "aborted" else 1.0
+        if outcome == "aborted":
+            if aborted_pct is None or not 0 <= aborted_pct < 100:
+                raise ValueError("a run that stopped early needs how far it got, 0 to 99 %")
+            frac = aborted_pct / 100
+        else:
+            frac = 1.0
         fil = {c: round(float(g) * frac, 1) for c, g in json.loads(v["filaments"]).items()}
         with self.tx() as db:
             rid = db.execute(

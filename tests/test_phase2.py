@@ -341,3 +341,72 @@ def test_backup_status(client, fake, tmp_path):
     assert "2.0 KB" in client.get("/settings").text
     (tmp_path / "backup-status.json").write_text(json.dumps({"ok": False, "at": now, "error": "line 40"}))
     assert client.get("/health/backup").status_code == 503 and "line 40" in client.get("/settings").text
+
+
+# -- review fixes ---------------------------------------------------------------------------
+
+def test_same_name_demand_gets_its_own_record(client, fake, store):
+    sign_in(client, fake)
+    form = {"name": "Spring fair", "kind": "event", "due": "2099-04-01", "target": "10"}
+    client.post("/demand", data=form)
+    r = client.post("/demand", data={**form, "due": "2099-05-01", "target": "99"})
+    assert r.headers["location"].startswith("/demand/spring-fair-2")
+    assert store.demand("spring-fair")["target"] == 10 and store.demand("spring-fair-2")["target"] == 99
+    client.post("/demand", data={**form, "name": "New"})
+    assert store.demand("new-1") and client.get("/demand/new").status_code == 200
+
+
+def test_skipped_move_is_reported_and_failed_upload_keeps_the_old_file(client, fake, store):
+    sign_in(client, fake)
+    lock_via_web(client)
+    v1 = store.plate("N")
+    real = fake.handler
+
+    def skip_moves(request):
+        if request.url.path == "/api/v1/library/files/move":
+            return httpx.Response(200, json={"moved": 0, "skipped": [{"id": v1.bambuddy_file_id, "reason": "not_owner"}]})
+        return real(request)
+    client.app.state.ctx.bambuddy._http._transport = httpx.MockTransport(skip_moves)
+    r, _ = lock_via_web(client, sliced_3mf(objects=("Nunu",) * 5))
+    assert "didn%27t+move" in r.headers["location"] or "didn't" in r.headers["location"]
+
+    def no_uploads(request):
+        if request.url.path == "/api/v1/library/files" and request.method == "POST":
+            return httpx.Response(500, json={})
+        return real(request)
+    client.app.state.ctx.bambuddy._http._transport = httpx.MockTransport(no_uploads)
+    v2 = store.plate("N")
+    lock_via_web(client, sliced_3mf(objects=("Nunu",) * 7))
+    production = next(f["id"] for f in fake.folders if f["name"] == "Production plates")
+    assert fake.files[v2.bambuddy_file_id]["folder_id"] == production  # still printable
+
+
+def test_stopped_run_needs_a_sane_percentage(client, fake, store):
+    import datetime as dt
+    sign_in(client, fake)
+    lock_via_web(client)
+    today = dt.date.today().isoformat()
+    for pct in ("", "0", "500", "²"):
+        assert client.post("/plates/N/runs", data={"date": today, "outcome": "aborted", "aborted_pct": pct}).status_code == 400
+    client.post("/plates/N/runs", data={"date": today, "outcome": "aborted", "aborted_pct": "50"})
+    (run,) = store.runs()
+    assert run.hours == round(store.plate("N").hours * 0.5, 2) and run.good == 0
+
+
+def test_unicode_digits_and_duplicate_aliases_dont_crash(client, fake, store):
+    sign_in(client, fake)
+    assert client.post("/demand", data={"name": "X", "kind": "event", "due": "2099-01-01", "target": "²"}).status_code == 400
+    r = client.post("/models", data={"name": "Bear", "aliases": "bear body\nbear body", "min_age": "³"})
+    assert r.status_code == 303 and store.model("bear")["aliases"] == "bear body" and store.model("bear")["min_age"] is None
+
+
+def test_settings_refuse_one_folder_for_both(client, fake, store):
+    from platewright.core.settings import Settings
+    s = Settings.from_values({**store.settings_values(), "retired_folder": "Production plates"})
+    assert any("different Bambuddy folder" in p for p in s.problems())
+    assert any("fail rate" in p for p in Settings.from_values({"assumed_fail_rate": float("nan")}).problems())
+
+
+def test_thumbnails_only_for_linked_files(client, fake):
+    sign_in(client, fake)
+    assert client.get("/thumb/50").status_code == 404  # no model links file 50 yet

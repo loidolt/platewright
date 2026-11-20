@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from platewright.bambuddy.client import BambuddyError
 from platewright.core.names import slugify
 from platewright.core.plan import demand_plan, fail_rate
-from platewright.web.context import Ctx
+from platewright.web.context import Ctx, to_int
 
 KINDS = ("order", "event", "restock")
 
@@ -74,27 +74,32 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             dt.date.fromisoformat(due)
         except ValueError:
             raise HTTPException(400, "Due date must look like YYYY-MM-DD")
-        target_raw = str(form.get("target", "0")).strip() or "0"
-        if not target_raw.isdigit():
+        target = to_int(form.get("target", "") or "0")
+        if target is None:
             raise HTTPException(400, "Target is a whole number")
         needs = {}
         for m in store.models():
             raw = str(form.get(f"need_{m['slug']}", "")).strip()
-            if raw and not raw.isdigit():
+            n = to_int(raw, 0)
+            if raw and to_int(raw) is None:
                 raise HTTPException(400, "Needs are whole numbers")
-            if raw and int(raw) > 0:
-                needs[m["slug"]] = int(raw)
-        target = int(target_raw)
+            if n > 0:
+                needs[m["slug"]] = n
         if target and target < sum(needs.values()):
             raise HTTPException(400, f"The total ({target}) is less than the needs added up ({sum(needs.values())})")
         if not target and not needs:
             raise HTTPException(400, "Give a total or what's needed per model")
-        slug = slug or slugify(str(form.get("slug", "")) or name)
+        creating = slug is None
+        slug = slug or slugify(name)
         if not slug:
             raise HTTPException(400, "The name needs letters or numbers")
-        is_new = store.demand(slug) is None
-        if is_new and request.url.path.endswith("/edit"):
-            raise HTTPException(404, "No such demand")
+        if creating:
+            if slug == "new":
+                slug = "new-1"
+            base, n = slug, 2
+            while store.demand(slug):  # a second "Spring fair" gets its own record
+                slug, n = f"{base}-{n}", n + 1
+        is_new = creating
         store.save_demand(slug, name=name, kind=kind, due=due, target=target, notes=str(form.get("notes", "")).strip(),
                           needs=needs, by=user["username"])
         d = store.demand(slug)
@@ -111,6 +116,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
 
     @app.post("/demand/{slug}/edit")
     async def update_demand(request: Request, slug: str):
+        ctx.require(request, "admin")
         if store.demand(slug) is None:
             raise HTTPException(404, "No such demand")
         return await save(request, slug)
@@ -143,6 +149,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             return ctx.back(f"/demand/{slug}", f"Plate {p.code} isn't in Bambuddy's library yet; upload it from its page")
         settings = store.settings()
         key = printer or next(iter(settings.printers), "")
+        if settings.printers and key not in settings.printers:
+            raise HTTPException(400, "Unknown printer")
         pc = settings.printers.get(key, {})
         if pc.get("model") and p.printer_model and pc["model"] != p.printer_model:
             return ctx.back(f"/demand/{slug}", f"Plate {p.code} was sliced for a {p.printer_model}, not a {pc['model']}")

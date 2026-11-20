@@ -95,8 +95,11 @@ class PlateFiles:
                                         printer_model_id=s.printer_model_id, nozzle=s.nozzle, objects=len(s.objects),
                                         file_path=str(dest.relative_to(self.root)), description=description, by=by)
         problem = await self.publish(code)
-        if old and old.bambuddy_file_id and old.sha256 != staged.sha256:
-            await self._move_out(old)
+        if problem is None and old and old.bambuddy_file_id and old.sha256 != staged.sha256:
+            # The new file is in place; only now take the old one out of the production folder.
+            moved = await self._move_out(old)
+            if moved:
+                problem = f"the new version is in Bambuddy, but {moved}"
         return vid, problem
 
     def library_name(self, p: PlateRow) -> str:
@@ -105,6 +108,8 @@ class PlateFiles:
     async def publish(self, code: str) -> str | None:
         """Put the current version's file in the production folder (reusing a copy already there)."""
         p = self.store.plate(code)
+        if p is None:
+            return "no such plate"
         path = self.root / (self.store.one("SELECT file_path FROM plate_versions WHERE id = ?", p.version_id)[0] or "")
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != p.sha256:
             return "Platewright's copy of the file is missing or changed"
@@ -137,5 +142,7 @@ class PlateFiles:
 
     async def retire(self, code: str) -> str | None:
         p = self.store.plate(code)
+        if p is None:
+            return "no such plate"
         self.store.set_plate_active(code, False)
         return await self._move_out(p) if p and p.bambuddy_file_id else None
