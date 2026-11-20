@@ -4,7 +4,7 @@
 <p><a href="{{ '/demand/' ~ d.slug if d else '/demand' }}">← {{ d.name if d else "Demand" }}</a></p>
 <h1>{{ "Edit " ~ d.name if d else "Add an order, event or restock target" }}</h1>
 <form method="post" action="{{ '/demand/' ~ d.slug ~ '/edit' if d else '/demand' }}" class="card stack">
-  <label>Name <input type="text" name="name" required value="{{ d.name if d else '' }}" placeholder="e.g. Christmas outreach"></label>
+  <label>Name <input type="text" name="name" required value="{{ d.name if d else '' }}" placeholder="e.g. Spring fair"></label>
   <div class="row">
     <label>Kind <select name="kind">{% for k in ["event", "order", "restock"] %}<option value="{{ k }}" {% if d and d.kind == k %}selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
     <label>Needed by <input type="date" name="due" required value="{{ d.due if d else '' }}"></label>

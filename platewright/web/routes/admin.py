@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import json
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -15,6 +19,23 @@ SCALARS = {
 }
 
 
+BACKUP_MAX_AGE = dt.timedelta(hours=36)
+
+
+def backup_status(data_dir: str) -> dict | None:
+    """What the nightly backup (outside the container) last wrote, if anything."""
+    try:
+        status = json.loads((Path(data_dir) / "backup-status.json").read_text())
+    except (OSError, ValueError):
+        return None
+    try:
+        at = dt.datetime.fromisoformat(status["at"].replace("Z", "+00:00"))
+        status["fresh"] = bool(status.get("ok")) and dt.datetime.now(dt.timezone.utc) - at < BACKUP_MAX_AGE
+    except (KeyError, ValueError):
+        status["fresh"] = False
+    return status
+
+
 def register(app: FastAPI, ctx: Ctx) -> None:
     store = ctx.store
 
@@ -22,7 +43,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
     async def settings_page(request: Request):
         user = ctx.require(request, "admin")
         return ctx.page(request, "settings.html", user=user, nav="settings", s=store.settings(), errors=[],
-                        last_sync=store.state("last_sync"), badge=ctx.extra["badge"].state)
+                        last_sync=store.state("last_sync"), badge=ctx.extra["badge"].state,
+                            backup=backup_status(ctx.cfg.data_dir))
 
     @app.post("/settings", response_class=HTMLResponse)
     async def save_settings(request: Request):
@@ -74,7 +96,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         if errors:
             draft = Settings.from_values({**store.settings_values(), **{k: v for k, v in values.items()}})
             return ctx.page(request, "settings.html", 400, user=user, nav="settings", s=draft, errors=errors,
-                            last_sync=store.state("last_sync"), badge=ctx.extra["badge"].state)
+                            last_sync=store.state("last_sync"), badge=ctx.extra["badge"].state,
+                            backup=backup_status(ctx.cfg.data_dir))
         store.set_settings(values)
         return ctx.back("/settings", "Saved")
 
@@ -83,3 +106,11 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         ctx.require(request, "admin")
         return JSONResponse(store.settings_values(),
                             headers={"Content-Disposition": "attachment; filename=platewright-settings.json"})
+
+    @app.get("/health/backup")
+    async def backup_health():
+        """For monitoring: 200 while the last backup succeeded less than 36 hours ago."""
+        status = backup_status(ctx.cfg.data_dir)
+        ok = bool(status and status.get("fresh"))
+        return JSONResponse({"status": "ok" if ok else "stale", "last": status}, status_code=200 if ok else 503)
+

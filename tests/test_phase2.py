@@ -328,3 +328,16 @@ def test_settings_save_and_validate(client, fake, store):
     assert r.status_code == 400 and "needs a hex value" in r.text
     assert store.settings().palette["White"]["hex"] == "#FFFFFF"  # nothing saved
     assert client.get("/settings/export").json()["period_target"] == 400
+
+
+def test_backup_status(client, fake, tmp_path):
+    import datetime as dt
+    sign_in(client, fake)
+    assert client.get("/health/backup").status_code == 503
+    assert "No backup has run yet" in client.get("/settings").text
+    now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (tmp_path / "backup-status.json").write_text(json.dumps({"ok": True, "at": now, "backup": "x", "bytes": 2048}))
+    assert client.get("/health/backup").status_code == 200
+    assert "2.0 KB" in client.get("/settings").text
+    (tmp_path / "backup-status.json").write_text(json.dumps({"ok": False, "at": now, "error": "line 40"}))
+    assert client.get("/health/backup").status_code == 503 and "line 40" in client.get("/settings").text

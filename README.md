@@ -19,25 +19,33 @@ theme, and links back to Bambuddy's own pages. It uses only the integration poin
 documents for sidebar apps ([external links](https://wiki.bambuddy.cool/features/external-links/),
 [connected apps](https://wiki.bambuddy.cool/features/connected-apps/)) and its REST API.
 
-**Status: phase 1 (read-only)**, written against Bambuddy v1.3.1.
+**Status: phase 2**, written against Bambuddy v1.3.1.
 
 - **Today:** good parts this month against the target and the pace needed, what each printer is
-  doing, finished production prints still waiting for a good / reject verdict in Bambuddy, demand
-  coverage, recent runs, and the last sync.
-- **Plates**, **Models**: locked plate versions with their mix, time and filament per part; models
-  with their test-print, license and safety badges and stock.
-- **Filament:** palette colors with grams on hand from Bambuddy's spool inventory, use per day and
-  days left, and spools that match no palette color.
-- **Sync:** every 5 minutes Platewright reads Bambuddy's print log and matches each finished print
-  to a locked plate version by the archive's fingerprint (sha256 of the file), falling back to the
-  `PLATE-<code>_` file name. A verdict changed later in Bambuddy is picked up on the next pass.
-- **Sidebar badge:** finished production prints without a verdict plus demands at risk, reported
-  after each sync.
+  doing, the finished prints **to review** (confirm all good, or count bad parts per model), demand,
+  recent runs and the last sync.
+- **Demand:** orders, events and restock targets with coverage (stock on hand goes to the earliest
+  first), plates needed against plate slots, and **Queue N plates**: one Bambuddy project per demand,
+  queue items that wait for a manual start and ask for the good / reject verdict.
+- **Plates:** upload a sliced `.gcode.3mf`, see the checks as a checklist (printer, palette, models
+  linked and test-printed, license, hours), link unknown slicer names to models on the spot, and
+  **lock** it as the next version. The file is kept by Platewright and uploaded to Bambuddy's
+  production folder; a superseded or retired plate's file moves out of it. Runs Bambuddy didn't see
+  can be logged by hand.
+- **Models:** license and distribution terms, safety labels, slicer names, the source file in
+  Bambuddy's library with its thumbnail, and test print pass / fail.
+- **Stock:** made, adjusted, out and on hand per model; **Out** (one model, or a mixed box split by
+  what's on hand, optionally for a demand) and **Adjust** with a reason.
+- **Filament:** palette colors with grams on hand from Bambuddy's inventory, use per day, days left.
+- **Settings:** wording ("part", "toy"), monthly target, printers, palette, operator group.
+- **Sync** every 5 minutes: each finished print is credited to a locked plate version by the
+  archive's fingerprint, falling back to the `PLATE-<code>_` file name. The **sidebar badge** is the
+  prints to review plus demands at risk.
 
-Registering models and locking plates (with the checks in `platewright/core/plates.py`) come in
-phase 2. The sidebar-app basics from phase 0 stay: sign-in with Bambuddy inside its frame (OAuth
-code flow with PKCE), the `bambuddy:theme` / `bambuddy:navigate` messages with Bambuddy's origin
-only, and `Content-Security-Policy: frame-ancestors <Bambuddy's origin>`.
+**Roles**, from Bambuddy: admins do everything; members of the operator group review prints and
+record parts going out; everyone else reads. The sidebar-app basics from phase 0 stay: sign-in with
+Bambuddy inside its frame (OAuth code flow with PKCE), the `bambuddy:theme` / `bambuddy:navigate`
+messages with Bambuddy's origin only, and `Content-Security-Policy: frame-ancestors <Bambuddy's origin>`.
 
 ## Hosting
 
@@ -53,9 +61,9 @@ Server-side calls (the sign-in token exchange, the sync and the badge) can go to
 1. **Connected app:** Settings → API Keys → Connected Apps. Name `Platewright`, callback URL
    `<PLATEWRIGHT_PUBLIC_URL>/auth/callback`. Copy the client ID and the secret; the secret is shown
    only once.
-2. **API key:** Settings → API Keys → Create Key. Turn on only **Read Status** and **Send
-   notifications** (Manage Queue is on by default). Create it as an admin: Send notifications needs
-   an owner who may update notifications.
+2. **API key:** Settings → API Keys → Create Key with **Read Status**, **Send notifications**,
+   **Manage Queue**, **Manage Library** and **Manage Projects**, nothing else. Create it as an admin:
+   Send notifications needs an owner who may update notifications.
 3. **Sidebar link:** Settings → General → Sidebar → External links. URL exactly
    `PLATEWRIGHT_PUBLIC_URL` (the badge is matched to the link by scheme, host, port and path), and
    **Open in new tab off**.
@@ -74,7 +82,7 @@ happens without a prompt.
 | `PLATEWRIGHT_BAMBUDDY_KEY` | | API key with Read Status (sync, pages) and Send notifications (badge). |
 | `PLATEWRIGHT_SESSION_KEY` | required | Signs the session cookie, at least 32 characters. |
 | `PLATEWRIGHT_SYNC_INTERVAL` | `300` | Seconds between syncs; the badge is reported after each. Bambuddy hides a badge older than 10 minutes. |
-| `PLATEWRIGHT_DATA_DIR` | `/data` | Holds `platewright.db` (SQLite). |
+| `PLATEWRIGHT_DATA_DIR` | `/data` | Holds `platewright.db` (SQLite) and `plates/`, the locked files. Back up both. |
 | `PLATEWRIGHT_SEED_FILE` | | Settings JSON (wording, target, printers, palette) for a new database; ignored once settings exist. |
 | `PLATEWRIGHT_COOKIE_SECURE` | `1` | `0` only for plain-http local development. |
 | `PLATEWRIGHT_DEV` | | `1`: throwaway session key and localhost URLs. |
