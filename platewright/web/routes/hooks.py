@@ -21,22 +21,26 @@ DELAY = 15  # seconds: let Bambuddy finish writing the archive and the print log
 
 
 def register(app: FastAPI, ctx: Ctx) -> None:
-    pending: dict[str, asyncio.Task] = {}
+    pending: dict = {"task": None, "again": False}
 
     async def later() -> None:
-        await asyncio.sleep(DELAY)
-        try:
-            await ctx.extra["sync"].run_now()
-        except Exception:
-            logger.exception("Sync after webhook failed")
+        while True:
+            await asyncio.sleep(DELAY)
+            pending["again"] = False
+            try:
+                await ctx.extra["sync"].run_now()
+            except Exception:
+                logger.exception("Sync after webhook failed")
+            if not pending["again"]:  # an event while syncing: once more, so it isn't lost
+                return
 
     @app.post("/hooks/bambuddy")
     async def bambuddy_hook(request: Request):
         secret = ctx.cfg.webhook_secret
         if not secret:
             raise HTTPException(404, "Not set up")
-        auth = request.headers.get("authorization", "")
-        if not hmac.compare_digest(auth.encode(), f"Bearer {secret}".encode()):
+        scheme, _, token = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(token.strip().encode(), secret.encode()):
             raise HTTPException(401, "Wrong or missing secret")
         try:
             body = await request.json()
@@ -46,7 +50,9 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         ctx.store.set_state("webhook", {"at": now(), "event": event})
         if event and event not in SYNC_EVENTS:
             return JSONResponse({"ok": True, "sync": False})
-        task = pending.get("sync")
+        task = pending["task"]
         if task is None or task.done():  # several events in a row make one sync
-            pending["sync"] = asyncio.create_task(later())
+            pending["task"] = asyncio.create_task(later())
+        else:
+            pending["again"] = True
         return JSONResponse({"ok": True, "sync": True}, status_code=202)

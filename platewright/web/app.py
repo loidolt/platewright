@@ -115,8 +115,11 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     messenger = Messenger(bambuddy, store, cfg.public_url)
 
     async def after_sync() -> None:
-        await badge.report()
-        await messenger.tick()
+        for step in (badge.report, messenger.tick):  # one failing must not skip the other
+            try:
+                await step()
+            except Exception:
+                logger.exception("After-sync step %s failed", step.__qualname__)
 
     sync = SyncLoop(bambuddy, store, cfg.sync_interval, after=after_sync)
     spools_cache = Cached(60)

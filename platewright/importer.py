@@ -60,6 +60,7 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
                        demands=0, stock_moves=0, skipped=0, notes=[])
     copies: list[tuple[Path, Path]] = []
 
+    settings_values: dict = {}
     cfg_path = root / "config.json"
     if cfg_path.exists():
         values = from_toys_config(json.loads(cfg_path.read_text()))
@@ -68,10 +69,8 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
             rep["notes"].append("config.json not imported: " + "; ".join(problems))
         elif store.settings_values() and not replace_settings:
             rep["notes"].append("settings already exist; config.json skipped (--replace-settings to overwrite)")
-        elif not dry_run:
-            store.set_settings(values)
-            rep["settings"] = len(values)
         else:
+            settings_values = values
             rep["settings"] = len(values)
 
     # Plate files by fingerprint, wherever toys.py kept them.
@@ -83,6 +82,23 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
     with store.tx() as db:
         db.execute("SAVEPOINT import")
         stamp = now()
+        for k, v in settings_values.items():
+            db.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                       (k, json.dumps(v)))
+        # CSV rows already imported, by content and how often each occurs (two identical runs on one
+        # day are two runs). Rows appended to toys.py's CSVs later still come in.
+        done_rows = _json((db.execute("SELECT value FROM sync_state WHERE key = 'toys_import'").fetchone() or ["{}"])[0])
+        seen = {"runs": dict(done_rows.get("runs", {})), "ledger": dict(done_rows.get("ledger", {}))}
+        counted: dict[str, dict[str, int]] = {"runs": {}, "ledger": {}}
+
+        def first_time(table: str, row: dict) -> bool:
+            h = hashlib.sha1(json.dumps(row, sort_keys=True).encode()).hexdigest()[:16]
+            counted[table][h] = counted[table].get(h, 0) + 1
+            if counted[table][h] <= seen[table].get(h, 0):
+                return False
+            seen[table][h] = counted[table][h]
+            return True
+
         model_ids = {r["slug"]: r["id"] for r in db.execute("SELECT id, slug FROM models")}
         ppu: dict[str, int] = {}
         for r in _rows(root / "01_models" / "models.csv"):
@@ -125,27 +141,31 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
             code = (p.get("plate_id") or "").upper()
             if not code:
                 continue
-            row = db.execute("SELECT id FROM plates WHERE code = ?", (code,)).fetchone()
+            row = db.execute("SELECT p.id, v.version FROM plates p LEFT JOIN plate_versions v "
+                             "ON v.id = p.current_version_id WHERE p.code = ?", (code,)).fetchone()
             if row is None:
                 pid = db.execute("INSERT INTO plates (code, description, active) VALUES (?, ?, ?)",
                                  (code, p.get("description", ""), int(p.get("active") == "yes"))).lastrowid
                 rep["plates"] += 1
+                current_here = 0
             else:
-                pid = row["id"]
+                pid, current_here = row["id"], row["version"] or 0
             current_v = int(_num(p.get("version"), 1))
             snaps = {int(_num(v, 1)): s for v, s in _json(p.get("history")).items()}
             snaps[current_v] = p
             current_id = None
             for v in sorted(snaps):
                 s = snaps[v]
-                existing = db.execute("SELECT id FROM plate_versions WHERE plate_id = ? AND version = ?", (pid, v)).fetchone()
+                existing = db.execute("SELECT id, file_path FROM plate_versions WHERE plate_id = ? AND version = ?",
+                                      (pid, v)).fetchone()
                 mix = mix_of(s)
+                sha = s.get("sha256", "")
                 if existing:
                     versions[(code, v)] = (existing["id"], mix)
-                    current_id = existing["id"] if v == current_v else current_id
+                    if existing["file_path"] and sha in files and not (data_dir / existing["file_path"]).exists():
+                        copies.append((files[sha], data_dir / existing["file_path"]))  # a copy lost last time
                     rep["skipped"] += 1
                     continue
-                sha = s.get("sha256", "")
                 file_path = ""
                 if sha in files:
                     rel = f"plates/PLATE-{code}_v{v}_{int(_num(s.get('units')))}up.gcode.3mf"
@@ -170,12 +190,9 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
                 versions[(code, v)] = (vid, mix)
                 current_id = vid if same else current_id
                 rep["versions"] += 1
-            if current_id:
+            if current_id and current_v > current_here:  # never back to an older version
                 db.execute("UPDATE plates SET current_version_id = ? WHERE id = ?", (current_id, pid))
 
-        # Repeat imports are recognised against runs that existed before this one started, so two
-        # identical runs logged by hand on one day both come in.
-        before = db.execute("SELECT coalesce(max(id), 0) FROM runs").fetchone()[0]
         for r in _rows(root / "03_runs" / "runs.csv"):
             key = ((r.get("plate_id") or "").upper(), int(_num(r.get("plate_version"), 1)))
             if key not in versions:
@@ -184,34 +201,40 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
                 continue
             vid, mix = versions[key]
             bb = r.get("bambuddy_run") or None
-            if bb and db.execute("SELECT 1 FROM runs WHERE bambuddy_run_id = ?", (bb,)).fetchone():
+            if (bb and db.execute("SELECT 1 FROM runs WHERE bambuddy_run_id = ?", (bb,)).fetchone()) \
+                    or not first_time("runs", r):
                 rep["skipped"] += 1
                 continue
             outcome = _choice(r.get("outcome") or "ok", ("ok", "rejected", "failed", "stopped", "cancelled", "aborted"), "ok")
-            if not bb and db.execute(
-                    "SELECT 1 FROM runs WHERE bambuddy_run_id IS NULL AND plate_version_id = ? AND date = ? AND notes = ? "
-                    "AND outcome = ? AND synced_at = 'toys.py' AND id <= ?",
-                    (vid, r.get("date"), r.get("notes", ""), outcome, before)).fetchone():
-                rep["skipped"] += 1
-                continue
+            good = {k: int(_num(v)) for k, v in _json(r.get("models_good")).items()}
+            pct = int(_num(r["aborted_pct"])) if r.get("aborted_pct") else None
+            if outcome == "aborted" and sum(good.values()) > 0:
+                outcome = "ok"  # stopped early, but some came out good (toys.py log --aborted-pct --good)
+            failures: dict[str, int] = {}
+            if outcome == "ok":
+                detail = {k: int(_num(v)) for k, v in _json(r.get("failed_detail")).items()}
+                if detail:
+                    failures = detail
+                elif good:  # hand-logged: the bad ones are the plate's mix minus what came out good
+                    failures = {k: max(n - good.get(k, n), 0) for k, n in mix.items()}
+                elif int(_num(r.get("units_failed"))):  # older rows: only the total
+                    failures = {ANY: int(_num(r.get("units_failed")))}
             rid = db.execute(
                 "INSERT INTO runs (bambuddy_run_id, plate_version_id, date, printer, outcome, source, hours, grams, "
                 "filaments, aborted_pct, verdict, notes, reviewed_at, reviewed_by, synced_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, 'toys.py', 'toys.py')",
                 (bb, vid, r.get("date"), r.get("printer", ""), outcome, "bambuddy" if r.get("source") == "bambuddy" else "manual",
-                 _num(r.get("hours")), _num(r.get("grams")), json.dumps(_json(r.get("filaments"))),
-                 int(_num(r["aborted_pct"])) if r.get("aborted_pct") else None, r.get("notes", ""), r.get("date"))).lastrowid
-            if outcome == "ok":
-                detail = {k: int(_num(v)) for k, v in _json(r.get("failed_detail")).items()}
-                if not detail:  # hand-logged: the bad ones are the plate's mix minus what came out good
-                    good = {k: int(_num(v)) for k, v in _json(r.get("models_good")).items()}
-                    detail = {k: max(n - good.get(k, n), 0) for k, n in mix.items()} if good else {}
-                for k, n in detail.items():
-                    if n <= 0:
-                        continue
-                    scope = "any" if k == ANY else "unlinked" if k == UNLINKED else "model"
-                    db.execute("INSERT INTO run_failures (run_id, model_id, scope, count) VALUES (?, ?, ?, ?)",
-                               (rid, model_ids.get(k) if scope == "model" else None, scope, n))
+                 _num(r.get("hours")), _num(r.get("grams")), json.dumps(_json(r.get("filaments"))), pct,
+                 r.get("notes", ""), r.get("date"))).lastrowid
+            for k, n in failures.items():
+                if n <= 0:
+                    continue
+                scope = "any" if k == ANY else "unlinked" if k == UNLINKED else "model"
+                if scope == "model" and k not in model_ids:
+                    rep["notes"].append(f"run {r.get('date')} of {key[0]}: bad parts of unknown model '{k}' counted as any")
+                    scope = "any"
+                db.execute("INSERT INTO run_failures (run_id, model_id, scope, count) VALUES (?, ?, ?, ?)",
+                           (rid, model_ids.get(k) if scope == "model" else None, scope, n))
             rep["runs"] += 1
 
         demand_ids = {r["slug"]: r["id"] for r in db.execute("SELECT id, slug FROM demands")}
@@ -229,25 +252,29 @@ def import_folder(root: str | Path, store: Store, data_dir: str | Path, *, dry_r
                  e.get("created") or stamp[:10])).lastrowid
             demand_ids[slug] = did
             for m, n in _json(e.get("needs")).items():
-                if m in model_ids and int(_num(n)) > 0:
+                if m not in model_ids:
+                    rep["notes"].append(f"event {slug}: need of unknown model '{m}' left out")
+                elif int(_num(n)) > 0:
                     db.execute("INSERT INTO demand_needs (demand_id, model_id, qty) VALUES (?, ?, ?)",
                                (did, model_ids[m], int(_num(n))))
             rep["demands"] += 1
 
-        if db.execute("SELECT 1 FROM ledger WHERE by = 'toys.py' LIMIT 1").fetchone():
-            rep["notes"].append("stock moves from toys.py were imported before; inventory.csv skipped")
-        else:
-            for r in _rows(root / "03_runs" / "inventory.csv"):
-                kind = {"give": "out", "adjust": "adjust"}.get(r.get("kind", ""))
-                qty = int(_num(r.get("qty")))
-                if not kind or not qty:
-                    rep["skipped"] += 1
-                    continue
-                db.execute("INSERT INTO ledger (date, kind, model_id, qty, demand_id, notes, by) VALUES (?, ?, ?, ?, ?, ?, 'toys.py')",
-                           (r.get("date"), kind, model_ids.get(r.get("model", "")), qty, demand_ids.get(r.get("event") or ""),
-                            r.get("notes", "")))
-                rep["stock_moves"] += 1
+        for r in _rows(root / "03_runs" / "inventory.csv"):
+            kind = {"give": "out", "adjust": "adjust"}.get(r.get("kind", ""))
+            qty = int(_num(r.get("qty")))
+            if not kind or not qty or not first_time("ledger", r):
+                rep["skipped"] += 1
+                continue
+            model = r.get("model", "")
+            if model and model != UNLINKED and model not in model_ids:
+                rep["notes"].append(f"stock move {r.get('date')} of unknown model '{model}' booked as unlinked")
+            db.execute("INSERT INTO ledger (date, kind, model_id, qty, demand_id, notes, by) VALUES (?, ?, ?, ?, ?, ?, 'toys.py')",
+                       (r.get("date"), kind, model_ids.get(model), qty, demand_ids.get(r.get("event") or ""),
+                        r.get("notes", "")))
+            rep["stock_moves"] += 1
 
+        db.execute("INSERT INTO sync_state (key, value) VALUES ('toys_import', ?) "
+                   "ON CONFLICT (key) DO UPDATE SET value = excluded.value", (json.dumps(seen),))
         if dry_run:
             db.execute("ROLLBACK TO import")
         db.execute("RELEASE import")

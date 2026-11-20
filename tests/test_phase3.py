@@ -86,6 +86,8 @@ def test_webhook_needs_the_secret_and_schedules_a_sync(client, monkeypatch):
     monkeypatch.setattr(hooks, "DELAY", 0)
     assert client.post("/hooks/bambuddy", json={"event": "print_complete"}).status_code == 401
     assert client.post("/hooks/bambuddy", json={}, headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert client.post("/hooks/bambuddy", json={"event": "x"}, headers={"Authorization": "bearer s3cret"}).status_code == 200
+    assert client.post("/hooks/bambuddy", content=b"not json", headers={"Authorization": "Bearer s3cret"}).status_code == 202
     calls_before = sum(c == "/api/v1/print-log/" for c in client.fake.calls)
     r = client.post("/hooks/bambuddy", json={"event": "print_complete"}, headers={"Authorization": "Bearer s3cret"})
     assert r.status_code == 202 and r.json()["sync"]
@@ -120,10 +122,15 @@ def test_demand_alert_once_per_risk():
     plans, s = plan_for(2, 40)  # 10 plates, 2 slots
     alerts, state = demand_alerts(plans, {}, s)
     assert len(alerts) == 1 and "40 toys short" in alerts[0]["title"] and "plate slots" in alerts[0]["message"]
-    again, state2 = demand_alerts(plans, state, s)
-    assert again == [] and state2 == state
+    assert state == {} and alerts[0]["kind"] == "slots"  # remembered only once delivered
+    sent = {"fair": "slots"}
+    assert demand_alerts(plans, sent, s) == ([], sent)
+    tighter, _ = plan_for(1, 60)  # different numbers, same kind of risk: no new message
+    assert demand_alerts(tighter, sent, s)[0] == []
+    late, _ = plan_for(-3, 40)
+    assert [a["kind"] for a in demand_alerts(late, sent, s)[0]] == ["late"]
     ok, _ = plan_for(30, 4)
-    assert demand_alerts(ok, state, s) == ([], {})
+    assert demand_alerts(ok, sent, s) == ([], {})
 
 
 def test_weekly_summary_text():
@@ -161,6 +168,32 @@ def test_messenger_sends_alerts_and_the_summary_once(client):
     assert asyncio.run(m.tick(monday_9)) == []
 
 
+def test_undelivered_alerts_are_kept_for_later(client):
+    calls = {"n": 0, "channels": 0}
+    real = client.fake.handler
+
+    def app_message(request):
+        if request.url.path == "/api/v1/notifications/app-message":
+            calls["n"] += 1
+            if calls.get("refuse"):
+                return httpx.Response(429, json={"detail": "slow down"})
+            return httpx.Response(200, json={"channels": calls["channels"]})
+        return real(request)
+    client.app.state.ctx.bambuddy._http._transport = httpx.MockTransport(app_message)
+    m = Messenger(client.app.state.ctx.bambuddy, client.store, "https://plates.example.test")
+    for slug in ("a", "b"):
+        client.store.save_demand(slug, name=slug.upper(), kind="event", due=dt.date.today().isoformat(), target=0,
+                                 notes="", needs={"nunu": 50})
+    tuesday = dt.datetime.combine(dt.date.today() + dt.timedelta(days=(1 - dt.date.today().weekday()) % 7),
+                                  dt.time(9)).astimezone()
+    assert asyncio.run(m.tick(tuesday)) == [] and client.store.state("alerted") == {}  # no channel yet
+    calls["refuse"] = True
+    assert asyncio.run(m.tick(tuesday)) == [] and "429" in client.store.state("messages")["error"]
+    calls.update(refuse=False, channels=1)
+    assert len(asyncio.run(m.tick(tuesday))) == 2 and set(client.store.state("alerted")) == {"a", "b"}
+    assert asyncio.run(m.tick(tuesday)) == []
+
+
 def test_test_message_button_reports_missing_channel(client):
     sign_in(client, client.fake)
     real = client.fake.handler
@@ -182,3 +215,54 @@ def test_manifest_and_icons(client):
         r = client.get(i["src"])
         assert r.status_code == 200 and r.content[:8] == b"\x89PNG\r\n\x1a\n"
     assert client.get("/favicon.ico", follow_redirects=True).content[:4] == b"\x89PNG"
+
+
+def copy_toys(tmp_path):
+    import shutil
+    folder = tmp_path / "toys"
+    shutil.copytree(TOYS, folder)
+    return folder
+
+
+def test_import_edge_cases_from_toys_semantics(tmp_path):
+    import csv
+    folder = copy_toys(tmp_path)
+    runs = folder / "03_runs" / "runs.csv"
+    rows = list(csv.DictReader(runs.open()))
+    fields = list(rows[0])
+    stopped_with_good = {**rows[3], "date": "2026-11-05", "units_good": "3", "units_failed": "5",
+                         "models_good": json.dumps({"007-bear": 3})}  # log A --aborted-pct 40 --good 3
+    old_style = {**rows[1], "date": "2026-11-06", "units_good": "7", "units_failed": "1", "models_good": ""}
+    with runs.open("a", newline="") as f:
+        csv.DictWriter(f, fields).writerows([stopped_with_good, old_style])
+    store = Store(":memory:")
+    import_folder(folder, store, tmp_path / "data")
+    by_date = {r.date: r for r in store.runs()}
+    assert by_date["2026-11-05"].good == 3 and by_date["2026-11-05"].aborted_pct == 40
+    assert by_date["2026-11-06"].good == 7
+    assert by_date["2026-11-04"].good == 0  # the plain aborted run still yields nothing
+
+
+def test_rows_added_to_toys_later_come_in(tmp_path):
+    folder = copy_toys(tmp_path)
+    store = Store(":memory:")
+    import_folder(folder, store, tmp_path / "data")
+    inv = folder / "03_runs" / "inventory.csv"
+    inv.write_text(inv.read_text() + "2026-11-21,give,007-bear,2,,later\n")
+    rep = import_folder(folder, store, tmp_path / "data")
+    assert rep["stock_moves"] == 1 and store.stock()["007-bear"]["on_hand"] == 8
+
+
+def test_reimport_never_rolls_a_plate_back_and_restores_lost_files(tmp_path):
+    folder = copy_toys(tmp_path)
+    store = Store(":memory:")
+    data = tmp_path / "data"
+    import_folder(folder, store, data)
+    a = store.plate("A")
+    store.q("INSERT INTO plate_versions (plate_id, version, sha256, units, objects, hours, grams, registered_at) "
+            "VALUES (?, 3, 'new', 8, 8, 1, 1, '2026-11-25')", a.id)
+    store.q("UPDATE plates SET current_version_id = (SELECT id FROM plate_versions WHERE version = 3) WHERE id = ?", a.id)
+    lost = next((data / "plates").glob("*_v1_*"))
+    lost.unlink()
+    import_folder(folder, store, data)
+    assert store.plate("A").version == 3 and lost.exists()

@@ -8,29 +8,32 @@ from platewright.core.plan import DemandPlan, MonthStatus, RunTotals
 from platewright.core.settings import Settings
 
 
-def risk_reason(p: DemandPlan, settings: Settings) -> str:
+def risk_reason(p: DemandPlan, settings: Settings) -> tuple[str, str]:
+    """(kind, words): the kind is what an alert is remembered by, so changing numbers don't
+    announce the same risk again."""
     if p.days < 0:
-        return f"its date passed {-p.days} days ago"
+        return "late", f"its date passed {-p.days} days ago"
     if p.no_plate:
-        return "no active plate makes some of what it needs"
-    return f"it needs ≈ {p.cumulative_plates} plates with earlier demand, and only {p.slots:g} plate slots are left"
+        return "no_plate", "no active plate makes some of what it needs"
+    return "slots", f"it needs ≈ {p.cumulative_plates} plates with earlier demand, and only {p.slots:g} plate slots are left"
 
 
 def demand_alerts(plans: list[DemandPlan], sent: dict[str, str], settings: Settings) -> tuple[list[dict], dict[str, str]]:
-    """Messages for demand that became at risk since the last check, and the new state.
-    A demand is announced once when it becomes at risk (again after it recovered, or when the
-    reason changes); nothing is repeated while it stays the same."""
+    """Messages for demand that became at risk since the last check, and the state of what is
+    at risk now (slug -> kind) with the already-announced kinds carried over. A demand is
+    announced once when it becomes at risk, again only after it recovered or when the kind of
+    risk changes."""
     out, state = [], {}
     for p in plans:
         if not p.at_risk:
             continue
-        reason = risk_reason(p, settings)
-        key = reason.split(",")[0].split(" with ")[0]
-        state[p.demand.slug] = key
-        if sent.get(p.demand.slug) == key:
+        kind, reason = risk_reason(p, settings)
+        if sent.get(p.demand.slug) == kind:
+            state[p.demand.slug] = kind
             continue
         out.append({
             "slug": p.demand.slug,
+            "kind": kind,
             "title": f"{p.demand.name}: {p.short} {settings.unit(p.short)} short",
             "message": f"{p.demand.name} on {p.demand.due} needs {p.demand.total} {settings.unit()}; "
                        f"{p.covered} are on hand for it and {p.delivered} went out. It is at risk: {reason}.",
