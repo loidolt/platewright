@@ -354,7 +354,8 @@ def test_plates_and_models_pages(client, fake, store):
     lock_plate(store)
     sign_in(client, fake)
     plates = client.get("/plates").text
-    assert "Plate N" in plates and "Nunu ×4" in plates and 'data-bambuddy-path="/files?highlight=2"' in plates
+    assert "Plate N" in plates and "Nunu ×4" in plates and 'src="/thumb/2"' in plates
+    assert 'data-bambuddy-path="/files?highlight=2"' in client.get("/plates/N").text
     assert "Version 1" in client.get("/plates/n").text
     assert client.get("/plates/ZZ").status_code == 404
     models = client.get("/models").text
@@ -372,7 +373,7 @@ def test_filament_page(client, fake, store):
 
 def test_empty_pages_explain_themselves(client, fake):
     sign_in(client, fake)
-    assert "No plates locked yet" in client.get("/plates").text
+    assert "No plates yet" in client.get("/plates").text
     assert "No models registered yet" not in client.get("/models").text  # Nunu exists in this store
     assert "Nothing to review" in client.get("/").text
 

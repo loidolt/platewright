@@ -1,66 +1,102 @@
 {% extends "base.html" %}
-{% from "_macros.html" import model_name %}
+{% from "_macros.html" import model_name, page_head, field %}
 {% block title %}Check plate · Platewright{% endblock %}
 {% block content %}
 {% set c = st.check %}
-<p><a href="/plates/new">← Another file</a></p>
-<h1>{{ st.filename }}</h1>
-{% if error %}<p class="bad">{{ error }}</p>{% endif %}
-{% if same_file %}<p class="warn">This exact file is already plate {{ same_file.code }} v{{ same_file.version }}.</p>{% endif %}
+{{ page_head("Check Plate", "file-up", st.filename, back=("/plates/new", "Another file")) }}
 
-<section class="card">
-  <h2>What's on it</h2>
-  <dl class="facts">
-    <dt>Makes</dt><dd>{{ c.units }} {{ settings.unit(c.units) }}:
-      {% for slug, n in c.model_units.items() %}{{ model_name(slug, models) }} ×{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
-    <dt>Time</dt><dd>{{ c.hours }} h · {{ c.min_per_unit }} min per {{ settings.unit(1) }}</dd>
-    <dt>Filament</dt><dd>{% for color, g in c.filaments.items() %}<span class="swatch" data-hex="{{ settings.palette.get(color, {}).get('hex', color) | norm_hex }}"></span>{{ color }} {{ g }} g{% if not loop.last %} · {% endif %}{% endfor %}
-      · {{ c.g_per_unit }} g per {{ settings.unit(1) }} · {{ c.color_changes }} color changes</dd>
-    <dt>Printer</dt><dd>{{ st.sliced.printer_model or st.sliced.printer_model_id or "unknown" }}{% if st.sliced.nozzle %}, {{ st.sliced.nozzle }} mm nozzle{% endif %}</dd>
-  </dl>
-  {% if c.linked %}
-  <p class="muted small">Slicer names: {% for slug, names in c.linked.items() %}{{ model_name(slug, models) }} ← {% for n, k in names.items() %}'{{ n }}' ×{{ k }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}; {% endif %}{% endfor %}</p>
-  {% endif %}
-</section>
+{% if error %}<div class="banner bad" role="alert">{{ icon("circle-x") }}<p>{{ error }}</p></div>{% endif %}
+{% if same_file %}<div class="banner info">{{ icon("info") }}<p>This exact file is already <a href="/plates/{{ same_file.code }}">plate {{ same_file.code }} v{{ same_file.version }}</a>.</p></div>{% endif %}
 
-<section class="card">
-  <h2>Checks</h2>
-  <ul class="checks">
-    {% for b in c.blockers %}<li class="bad">✕ {{ b }}</li>{% endfor %}
-    {% for w in c.warnings %}<li class="warn">! {{ w }}</li>{% endfor %}
-    {% if not c.blockers and not c.warnings %}<li class="good">✓ Everything checks out.</li>{% endif %}
-  </ul>
-  {% if c.unmatched %}
-  <h3>Link slicer names to models</h3>
-  {% for name, n in c.unmatched.items() %}
-  <form method="post" action="/plates/new/{{ st.sha256 }}/alias" class="row">
-    <input type="hidden" name="name" value="{{ name }}">
-    <span>'{{ name }}' ×{{ n }} is</span>
-    <select name="model" required>
-      <option value="">choose a model…</option>
-      {% for slug, m in models.items() %}<option value="{{ slug }}">{{ m.name }}</option>{% endfor %}
-    </select>
-    <button class="btn small" type="submit">Link</button>
-  </form>
-  {% endfor %}
-  <p class="muted small">Not registered yet? <a href="/models/new">Add the model</a>, then come back to this page.</p>
-  {% endif %}
-</section>
+{# Which overrides apply to this file (shown only then). #}
+{% set ns = namespace(colors=false, untested=false) %}
+{% for m in c.blockers + c.warnings %}
+  {% if m.startswith("colors not in the palette") %}{% set ns.colors = true %}{% endif %}
+  {% if m.startswith("not test-printed") or m.startswith("slicer objects not linked") %}{% set ns.untested = true %}{% endif %}
+{% endfor %}
 
-<form method="post" action="/plates/new/{{ st.sha256 }}/lock" class="card stack">
-  <h2>Lock</h2>
-  <label>Plate code <span class="muted small">letters or digits; the same code makes a new version</span>
-    <input type="text" name="code" required maxlength="8" pattern="[A-Za-z0-9]{1,8}" value="{{ code }}" autocapitalize="characters" list="codes"></label>
-  <datalist id="codes">{% for p in plates %}<option value="{{ p.code }}">{{ p.description }}</option>{% endfor %}</datalist>
-  <label>Description <input type="text" name="description" value="{{ description }}" placeholder="e.g. 44-up overnight"></label>
-  <label>Count by hand <span class="muted small">only if the count above is wrong</span>
-    <input type="number" name="units" min="1" value="{{ units or '' }}" inputmode="numeric"></label>
-  <details>
-    <summary class="muted small">Override checks</summary>
-    <label class="inline"><input type="checkbox" name="allow_untested" value="1" {% if allow_untested %}checked{% endif %}> lock even with models not test-printed or slicer names not linked</label>
-    <label class="inline"><input type="checkbox" name="allow_unmapped" value="1" {% if allow_unmapped %}checked{% endif %}> lock even with colors not in the palette</label>
-    <p class="muted small">Nothing overrides the printer check. <button class="link" type="submit" formmethod="get" formaction="/plates/new/{{ st.sha256 }}">Check again with these</button></p>
-  </details>
-  <div><button class="btn btn-accent" type="submit" {% if c.blockers %}disabled{% endif %}>Lock and put in File Manager</button></div>
-</form>
+<div class="cols">
+  <div class="stack-lg">
+    <section class="card">
+      <h2 class="card-title">Checks</h2>
+      <ul class="checks">
+        {% for b in c.blockers %}<li class="bad">{{ icon("circle-x") }}<span>{{ b | sentence }}</span></li>{% endfor %}
+        {% for w in c.warnings %}<li class="warn">{{ icon("circle-alert") }}<span>{{ w | sentence }}</span></li>{% endfor %}
+        {% if not c.blockers and not c.warnings %}<li class="good">{{ icon("circle-check") }}<span>Everything checks out.</span></li>{% endif %}
+      </ul>
+
+      {% if c.unmatched %}
+      <h3 class="small secondary">Link slicer names to models</h3>
+      <ul class="list">
+      {% for name, n in c.unmatched.items() %}
+        <li><form method="post" action="/plates/new/{{ st.sha256 }}/alias" class="row">
+          <input type="hidden" name="name" value="{{ name }}">
+          <span class="nowrap"><strong>'{{ name }}'</strong> <span class="muted">×{{ n }}</span> is</span>
+          <select name="model" required aria-label="Model for '{{ name }}'">
+            <option value="">Choose a model…</option>
+            {% for slug, m in models.items() %}<option value="{{ slug }}">{{ m.name }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-sm" type="submit">{{ icon("check") }} Link</button>
+        </form></li>
+      {% endfor %}
+      </ul>
+      <p class="help mt">Not registered yet? <a href="/models/new">Add the model</a>, then come back to this page.</p>
+      {% endif %}
+
+      {% if ns.colors or ns.untested %}
+      <fieldset class="mt">
+        <legend>Lock anyway</legend>
+        {% if ns.untested %}
+        <label class="check"><input type="checkbox" name="allow_untested" value="1" form="lock" data-submit="#recheck" {% if allow_untested %}checked{% endif %}>
+          <span>With models not test-printed, or slicer names not linked<span class="help">Their parts count as "not linked" until linked.</span></span></label>
+        {% endif %}
+        {% if ns.colors %}
+        <label class="check"><input type="checkbox" name="allow_unmapped" value="1" form="lock" data-submit="#recheck" {% if allow_unmapped %}checked{% endif %}>
+          <span>With colors not in the palette<span class="help">Their filament isn't tracked on the Filament page.</span></span></label>
+        {% endif %}
+        <p class="help">Nothing overrides the printer check.</p>
+      </fieldset>
+      {% endif %}
+    </section>
+
+    {% if role == "admin" %}
+    <form method="post" action="/plates/new/{{ st.sha256 }}/lock" class="card stack" id="lock">
+      <h2 class="card-title">Lock</h2>
+      <div class="form-grid">
+        {% call field("Plate code", "Letters or digits. An existing code makes its next version.") %}
+          <input type="text" name="code" required maxlength="8" pattern="[A-Za-z0-9]{1,8}" value="{{ code }}" autocapitalize="characters" list="codes">
+        {% endcall %}
+        {% call field("Description", opt=true) %}
+          <input type="text" name="description" value="{{ description }}" placeholder="e.g. 44-up overnight">
+        {% endcall %}
+        {% call field("Count by hand", "Only if the count on the right is wrong.", opt=true) %}
+          <input type="number" name="units" min="1" value="{{ units or '' }}" inputmode="numeric" class="short">
+        {% endcall %}
+      </div>
+      <datalist id="codes">{% for p in plates %}<option value="{{ p.code }}">{{ p.description }}</option>{% endfor %}</datalist>
+      <button id="recheck" type="submit" formmethod="get" formaction="/plates/new/{{ st.sha256 }}" formnovalidate hidden>Check again</button>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" {% if c.blockers %}disabled{% endif %}>{{ icon("lock") }} Lock Plate</button>
+        <span class="help">{% if c.blockers %}Fix the problems above{% if ns.colors or ns.untested %}, or tick "Lock anyway",{% endif %} to lock.
+          {% else %}It's uploaded to File Manager › {{ settings.library_folder }}.{% endif %}</span>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <section class="card">
+    <h2 class="card-title">What's on It</h2>
+    <dl class="facts">
+      <dt>Makes</dt><dd><strong>{{ c.units }} {{ settings.unit(c.units) }}</strong><br>
+        {% for slug, n in c.model_units.items() %}{{ model_name(slug, models) }} ×{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+      <dt>Time</dt><dd>{{ c.hours }} h · {{ c.min_per_unit }} min each</dd>
+      <dt>Filament</dt><dd>{% for color, g in c.filaments.items() %}<span class="color"><span class="swatch" data-hex="{{ settings.palette.get(color, {}).get('hex', color) | norm_hex }}"></span>{{ color }} {{ g }} g</span>{% if not loop.last %}<br>{% endif %}{% endfor %}
+        <br><span class="help">{{ c.g_per_unit }} g each · {{ c.color_changes }} color changes</span></dd>
+      <dt>Printer</dt><dd>{{ st.sliced.printer_model or st.sliced.printer_model_id or "unknown" }}{% if st.sliced.nozzle %}, {{ st.sliced.nozzle }} mm nozzle{% endif %}</dd>
+      {% if c.linked %}
+      <dt>Slicer names</dt><dd class="small">{% for slug, names in c.linked.items() %}{{ model_name(slug, models) }} ← {% for n, k in names.items() %}'{{ n }}' ×{{ k }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
+      {% endif %}
+    </dl>
+  </section>
+</div>
 {% endblock %}

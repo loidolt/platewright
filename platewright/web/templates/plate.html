@@ -1,97 +1,118 @@
 {% extends "base.html" %}
-{% from "_macros.html" import bb_link, mix, outcome %}
+{% from "_macros.html" import bb_link, mix, outcome, page_head, field, pill, thumb %}
 {% set p = versions[0] %}
 {% block title %}Plate {{ p.code }} · Platewright{% endblock %}
 {% block content %}
-<p><a href="/plates">← Plates</a></p>
-<h1>Plate {{ p.code }} {% if not p.active %}<span class="pill">retired</span>{% endif %}</h1>
-{% if p.description %}<p>{{ p.description }}</p>{% endif %}
+{% call page_head("Plate " ~ p.code, "layout-grid", p.description, back=("/plates", "Plates")) %}
+  {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "File Manager", "btn", "folder-open") }}{% endif %}
+  {% if role == "admin" %}<a class="btn btn-primary" href="/plates/new">{{ icon("plus") }} New Version</a>{% endif %}
+{% endcall %}
 
-<section class="card">
-  <h2>Version {{ p.version }} <span class="muted">(current)</span></h2>
-  <dl class="facts">
-    <dt>Makes</dt><dd>{{ p.units }} {{ settings.unit() }}: {{ mix(p.mix, models) }}</dd>
-    <dt>Time</dt><dd>{{ p.hours }} h · {{ p.min_per_unit }} min per {{ settings.unit(1) }}</dd>
-    <dt>Filament</dt>
-    <dd>{% for color, g in p.filaments.items() %}<span class="swatch" data-hex="{{ settings.palette.get(color, {}).get('hex', color) | norm_hex }}"></span>{{ color }} {{ g }} g{% if not loop.last %} · {% endif %}{% endfor %}</dd>
-    <dt>Printer</dt><dd>{{ p.printer_model or "unknown" }}{% if p.nozzle %}, {{ p.nozzle }} mm nozzle{% endif %}</dd>
-    <dt>Locked</dt><dd>{{ p.registered_at | fmt_date }}{% if p.registered_by %} by {{ p.registered_by }}{% endif %}</dd>
-    <dt>Fingerprint</dt><dd class="small mono">{{ p.sha256[:16] }}…</dd>
-  </dl>
-  {% if p.warnings %}
-  <p class="muted">Accepted with warnings:</p>
-  <ul>{% for w in p.warnings %}<li class="warn">{{ w }}</li>{% endfor %}</ul>
-  {% endif %}
-  <div class="row">
-    {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}
-    {% elif p.active %}<span class="warn small">Not in File Manager yet.</span>
-      {% if role == "admin" %}<form method="post" action="/plates/{{ p.code }}/publish"><button class="btn small" type="submit">Put it in File Manager</button></form>{% endif %}
+{% if not p.active %}
+<div class="banner info">{{ icon("info") }}<p>Retired: it no longer counts as a production plate. Lock a new version to use the code again.</p></div>
+{% elif not p.bambuddy_file_id %}
+<div class="banner">{{ icon("circle-alert") }}
+  <div class="split"><p>Locked, but not in File Manager yet, so it can't be queued.</p>
+    {% if role == "admin" %}<form method="post" action="/plates/{{ p.code }}/publish"><button class="btn btn-sm" type="submit">{{ icon("upload") }} Upload to File Manager</button></form>{% endif %}</div>
+</div>
+{% endif %}
+
+<div class="cols">
+  <div class="stack-lg">
+    <section class="card">
+      <div class="card-head"><h2 class="card-title">Version {{ p.version }}</h2>{% if p.active %}{{ pill("good", "Current", "circle-check") }}{% else %}{{ pill("", "Retired") }}{% endif %}</div>
+      <div class="media">
+        {{ thumb(p.bambuddy_file_id, "md", "layout-grid") }}
+        <dl class="facts">
+          <dt>Makes</dt><dd><strong>{{ p.units }} {{ settings.unit(p.units) }}</strong>: {{ mix(p.mix, models) }}</dd>
+          <dt>Time</dt><dd>{{ p.hours }} h · {{ p.min_per_unit }} min each</dd>
+          <dt>Filament</dt>
+          <dd>{% for color, g in p.filaments.items() %}<span class="color"><span class="swatch" data-hex="{{ settings.palette.get(color, {}).get('hex', color) | norm_hex }}"></span>{{ color }} {{ g }} g</span>{% if not loop.last %}<br>{% endif %}{% endfor %}
+            <br><span class="help">{{ p.g_per_unit }} g each · {{ p.color_changes }} color changes</span></dd>
+          <dt>Printer</dt><dd>{{ p.printer_model or "unknown" }}{% if p.nozzle %}, {{ p.nozzle }} mm nozzle{% endif %}</dd>
+          <dt>Locked</dt><dd>{{ p.registered_at | fmt_date }}{% if p.registered_by %} by {{ p.registered_by }}{% endif %}</dd>
+          <dt>Fingerprint</dt><dd class="small mono muted">{{ p.sha256[:16] }}…</dd>
+        </dl>
+      </div>
+      {% if p.warnings %}
+      <ul class="checks mt">{% for w in p.warnings %}<li class="warn">{{ icon("circle-alert") }}<span>Locked anyway: {{ w }}</span></li>{% endfor %}</ul>
+      {% endif %}
+    </section>
+
+    <section class="card flush">
+      <div class="card-head"><h2 class="card-title">Runs</h2></div>
+      {% if runs %}
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th class="wide-only">Version</th><th class="num">Good</th><th>Result</th><th></th></tr></thead>
+        <tbody>
+        {% for r in runs %}
+          <tr>
+            <td class="nowrap">{{ r.date | fmt_date }}</td><td class="wide-only">v{{ r.version }}</td>
+            <td class="num">{{ r.good }} / {{ r.planned }}</td>
+            <td>{{ outcome(r) }}</td>
+            <td class="num">{% if r.archive_id %}{{ bb_link("/archives/" ~ r.archive_id, "Archives", "btn btn-ghost btn-sm") }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="card-foot"><p class="muted">Not printed yet.</p></div>
+      {% endif %}
+    </section>
+
+    {% if versions | length > 1 %}
+    <section class="card flush">
+      <div class="card-head"><h2 class="card-title">Earlier Versions</h2></div>
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Version</th><th>Locked</th><th class="num">Makes</th><th class="num">Time</th></tr></thead>
+        <tbody>
+        {% for v in versions[1:] %}
+          <tr><td>v{{ v.version }}</td><td>{{ v.registered_at | fmt_date }}</td><td class="num">{{ v.units }}</td><td class="num">{{ v.hours }} h</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
     {% endif %}
-    {% if role == "admin" %}<a class="btn small" href="/plates/new">New version</a>{% endif %}
   </div>
-  {% if role == "admin" and p.active %}
-  <details class="danger">
-    <summary class="muted small">Retire this plate…</summary>
-    <form method="post" action="/plates/{{ p.code }}/retire">
-      <p class="small">It stops counting as a production plate, and its file moves to
-        "{{ settings.retired_folder }}" in Bambuddy so it isn't printed by mistake. Runs already made stay.</p>
-      <button class="btn small" type="submit">Retire plate {{ p.code }}</button>
-    </form>
-  </details>
-  {% endif %}
-</section>
 
-{% if p.active and can(user, settings, "operator") %}
-<section class="card">
-  <details>
-    <summary><strong>Log a run by hand</strong> <span class="muted small">for prints Bambuddy didn't see</span></summary>
-    <form method="post" action="/plates/{{ p.code }}/runs" class="stack">
-      <div class="row">
-        <label>Date <input type="date" name="date" value="{{ today }}" max="{{ today }}" required></label>
-        <label>Outcome
-          <select name="outcome"><option value="ok">finished</option><option value="aborted">stopped early</option><option value="failed">failed</option></select></label>
-      </div>
-      <div class="row">
-        <label>Bad {{ settings.unit() }} <input type="number" name="bad" min="0" max="{{ p.units }}" value="0" inputmode="numeric"></label>
-        <label>% done, if stopped <input type="number" name="aborted_pct" min="0" max="99" inputmode="numeric"></label>
-      </div>
-      <label>Notes <input type="text" name="notes"></label>
-      <div><button class="btn" type="submit">Log run</button></div>
-    </form>
-  </details>
-</section>
-{% endif %}
+  <div class="stack-lg">
+    {% if p.active and can(user, settings, "operator") %}
+    <section class="card">
+      <details class="disclosure">
+        <summary>{{ icon("hand") }} Log a Run by Hand{{ icon("chevron-down", "chev") }}</summary>
+        <form method="post" action="/plates/{{ p.code }}/runs" class="stack">
+          <p class="help">For a print of this plate that Bambuddy didn't see.</p>
+          <div class="form-grid">
+            {% call field("Date") %}<input type="date" name="date" value="{{ today }}" max="{{ today }}" required>{% endcall %}
+            {% call field("Outcome") %}
+              <select name="outcome"><option value="ok">Finished</option><option value="aborted">Stopped early</option><option value="failed">Failed</option></select>
+            {% endcall %}
+            {% call field("Bad " ~ settings.unit()) %}<input type="number" name="bad" min="0" max="{{ p.units }}" value="0" inputmode="numeric">{% endcall %}
+            {% call field("How far it got, %", "Only if it stopped early.") %}<input type="number" name="aborted_pct" min="0" max="99" inputmode="numeric">{% endcall %}
+            {% call field("Notes", opt=true, cls="full") %}<input type="text" name="notes">{% endcall %}
+          </div>
+          <div class="form-actions"><button class="btn btn-primary" type="submit">{{ icon("check") }} Log Run</button></div>
+        </form>
+      </details>
+    </section>
+    {% endif %}
 
-{% if versions | length > 1 %}
-<section class="card">
-  <h2>Earlier versions</h2>
-  <table class="grid">
-    <thead><tr><th>Version</th><th>Locked</th><th>Makes</th><th>Time</th></tr></thead>
-    <tbody>
-    {% for v in versions[1:] %}
-      <tr><td>v{{ v.version }}</td><td>{{ v.registered_at | fmt_date }}</td><td>{{ v.units }}</td><td>{{ v.hours }} h</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
-
-<section class="card">
-  <h2>Runs</h2>
-  {% if runs %}
-  <table class="grid">
-    <thead><tr><th>Date</th><th>Version</th><th>Good</th><th></th></tr></thead>
-    <tbody>
-    {% for r in runs %}
-      <tr>
-        <td>{{ r.date | fmt_date }}</td><td>v{{ r.version }}</td><td>{{ r.good }} / {{ r.planned }}</td>
-        <td>{{ outcome(r) }} {% if r.archive_id %}{{ bb_link("/archives/" ~ r.archive_id, "Bambuddy") }}{% endif %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="muted">Not printed yet.</p>
-  {% endif %}
-</section>
+    {% if role == "admin" and p.active %}
+    <section class="card danger-zone">
+      <details class="disclosure">
+        <summary>{{ icon("archive") }} Retire This Plate{{ icon("chevron-down", "chev") }}</summary>
+        <form method="post" action="/plates/{{ p.code }}/retire" class="stack">
+          <p class="small secondary">It stops counting as a production plate, and its file moves to
+            "{{ settings.retired_folder }}" in File Manager so it isn't printed by mistake. Runs already made stay.</p>
+          <div><button class="btn btn-danger" type="submit">{{ icon("archive") }} Retire Plate {{ p.code }}</button></div>
+        </form>
+      </details>
+    </section>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

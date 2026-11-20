@@ -125,12 +125,16 @@
     if (form.hasAttribute("hx-post") || form.hasAttribute("hx-get")) return; // htmx marks its own
     if (form.dataset.busy) { e.preventDefault(); return; }
     form.dataset.busy = "1";
+    form.classList.add("is-submitting");
     var btn = submitter || form.querySelector("button[type=submit], button:not([type])");
     if (btn) setTimeout(function () { btn.classList.add("is-busy"); }, 0);
   }, true);
   window.addEventListener("pageshow", function (e) {
     if (!e.persisted) return; // back from the next page: forms work again
-    document.querySelectorAll("form[data-busy]").forEach(function (f) { delete f.dataset.busy; });
+    document.querySelectorAll("form[data-busy]").forEach(function (f) {
+      delete f.dataset.busy;
+      f.classList.remove("is-submitting");
+    });
     document.querySelectorAll(".is-busy").forEach(function (b) { b.classList.remove("is-busy"); });
   });
 

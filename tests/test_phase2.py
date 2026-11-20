@@ -186,10 +186,12 @@ def test_check_link_lock_and_publish(client, fake, store):
     r = client.post("/plates/new", files={"file": ("mix.gcode.3mf", data)})
     sha = r.headers["location"].rsplit("/", 1)[1]
     page = client.get(f"/plates/new/{sha}").text
-    assert "not linked to a registered model" in page and "'Mystery' ×2 is" in page
+    assert "Slicer objects not linked to a registered model" in page and "<strong>'Mystery'</strong>" in page
     assert client.post(f"/plates/new/{sha}/lock", data={"code": "M"}).status_code == 400  # blocked
     client.post(f"/plates/new/{sha}/alias", data={"name": "Mystery", "model": "nunu"})
-    assert "Everything checks out" in client.get(f"/plates/new/{sha}").text
+    assert 'name="allow_untested"' in page and 'name="allow_unmapped"' not in page  # only the overrides that apply
+    checked = client.get(f"/plates/new/{sha}").text
+    assert "Everything checks out" in checked and "Lock anyway" not in checked
     r = client.post(f"/plates/new/{sha}/lock", data={"code": "m", "description": "mix"})
     assert r.headers["location"].startswith("/plates/M?notice=") and "File+Manager" in r.headers["location"]
     p = store.plate("M")
@@ -209,7 +211,7 @@ def test_new_version_moves_the_old_file_out_and_retire(client, fake, store):
     retired = next(f["id"] for f in fake.folders if f["name"] == "Retired plates")
     assert fake.files[v1.bambuddy_file_id]["folder_id"] == retired
     assert fake.files[v2.bambuddy_file_id]["folder_id"] != retired
-    assert "Earlier versions" in client.get("/plates/N").text
+    assert "Earlier Versions" in client.get("/plates/N").text
     client.post("/plates/N/retire")
     assert not store.plate("N").active and fake.files[v2.bambuddy_file_id]["folder_id"] == retired
 
@@ -236,7 +238,7 @@ def test_upload_failure_leaves_the_plate_locked(client, fake, store):
     r, _ = lock_via_web(client)
     assert "not+in+Bambuddy+yet" in r.headers["location"] and "permission" in r.headers["location"]
     assert store.plate("N").bambuddy_file_id is None
-    assert "Put it in File Manager" in client.get("/plates/N").text
+    assert "Upload to File Manager" in client.get("/plates/N").text
 
 
 # -- review and runs ------------------------------------------------------------------------

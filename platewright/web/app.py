@@ -125,6 +125,7 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     templates.env.filters["fmt_date"] = lambda d: dt.date.fromisoformat(d[:10]).strftime("%b %-d") if d else ""
     templates.env.filters["fmt_month"] = fmt_month
     templates.env.filters["fmt_when"] = fmt_when
+    templates.env.filters["sentence"] = lambda t: f"{t[:1].upper()}{t[1:]}" if t else ""
 
     def demand_risk(today: dt.date) -> list:
         settings = store.settings()

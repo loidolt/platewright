@@ -676,3 +676,15 @@ section[id] { scroll-margin-top: 4.5rem; }
 .mt { margin-top: 1rem; }
 .phone-only { display: none; }
 @media (max-width: 639px) { .phone-only { display: block; } }
+.dropzone .busy-note { display: none; }
+form.is-submitting .dropzone .idle-note { display: none; }
+form.is-submitting .dropzone .busy-note { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-primary); }
+form.is-submitting .dropzone .busy-note .i { animation: spin 0.9s linear infinite; }
+@media (max-width: 639px) {
+  .table .btn .lbl { display: none; }
+  .table .btn { min-width: 44px; padding: 0.5rem; }
+  /* thing cards: a small thumbnail beside the text instead of a full-width picture */
+  .cards .tile { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); column-gap: 0.85rem; row-gap: 0.35rem; align-items: start; }
+  .cards .tile > .thumb { grid-row: 1 / span 3; aspect-ratio: 1; }
+  .cards .tile > .thumb .i { width: 1.5rem; height: 1.5rem; }
+}
