@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bb_link, model_badges %}
+{% block title %}{{ model.name }} · Platewright{% endblock %}
+{% block content %}
+<p><a href="/models">← Models</a></p>
+<div class="title-row">
+  <h1>{{ model.name }} {% if model.ref %}<span class="muted">#{{ model.ref }}</span>{% endif %}</h1>
+  {% if role == "admin" %}<a class="btn" href="/models/{{ model.slug }}/edit">Edit</a>{% endif %}
+</div>
+{{ model_badges(model) }}
+{% if warning %}<p class="warn">{{ warning }}</p>{% endif %}
+
+<section class="card">
+  {% if model.bambuddy_file_id %}<img class="thumb big" src="/thumb/{{ model.bambuddy_file_id }}" alt="">{% endif %}
+  <dl class="facts">
+    {% if model.designer %}<dt>Designer</dt><dd>{{ model.designer }}</dd>{% endif %}
+    <dt>License</dt><dd>{{ model.license or "not recorded" }}</dd>
+    {% if model.url %}<dt>Source</dt><dd><a href="{{ model.url }}" target="_blank" rel="noopener">{{ model.url | truncate(56) }}</a></dd>{% endif %}
+    <dt>Slicer names</dt><dd>{{ model.aliases.split("\x1f") | join(", ") if model.aliases else "only its name" }}</dd>
+    <dt>Parts</dt><dd>{{ model.parts_per_unit }} slicer object{{ "" if model.parts_per_unit == 1 else "s" }} per {{ settings.unit(1) }}</dd>
+    <dt>On plates</dt><dd>{% for p in plates %}<a href="/plates/{{ p.code }}">{{ p.code }}</a> ×{{ p.mix[model.slug] }}{% if not p.active %} (retired){% endif %}{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</dd>
+    <dt>Stock</dt><dd>{{ stock.get("on_hand", 0) }} on hand · {{ stock.get("made", 0) }} made · {{ stock.get("out", 0) }} out</dd>
+    {% if model.bambuddy_file_id %}<dt>Source file</dt><dd>{{ bb_link("/files?highlight=" ~ model.bambuddy_file_id, "Open in Bambuddy") }}</dd>{% endif %}
+  </dl>
+  {% if model.notes %}<p class="muted">{{ model.notes }}</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Test print</h2>
+  {% if role == "admin" %}
+  <form method="post" action="/models/{{ model.slug }}/test" class="stack">
+    <label>Notes <input type="text" name="notes" placeholder="e.g. supports came off clean, colors right"></label>
+    <div class="row">
+      <button class="btn btn-accent" name="result" value="pass" type="submit">Passed</button>
+      <button class="btn" name="result" value="fail" type="submit">Failed</button>
+    </div>
+  </form>
+  {% endif %}
+  {% if tests %}
+  <ul class="list">
+    {% for t in tests %}
+    <li><span>{% if t.result == "pass" %}<span class="pill good">passed</span>{% else %}<span class="pill bad">failed</span>{% endif %}
+      {{ t.at | fmt_date }}{% if t.by %} · {{ t.by }}{% endif %}</span><span class="muted small">{{ t.notes }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No test print recorded. Print one, check it, then record the result here.</p>
+  {% endif %}
+</section>
+{% endblock %}

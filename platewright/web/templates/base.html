@@ -6,7 +6,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}]}'>
   <title>{% block title %}Platewright{% endblock %}</title>
   <link rel="stylesheet" href="{{ static('app.css') }}">
   <script src="{{ static('htmx.min.js') }}" defer></script>
@@ -16,17 +16,21 @@
   {% if user %}
   <nav class="tabs" aria-label="Platewright">
     <a href="/" {% if nav == "today" %}aria-current="page"{% endif %}>Today</a>
+    <a href="/demand" {% if nav == "demand" %}aria-current="page"{% endif %}>Demand</a>
     <a href="/plates" {% if nav == "plates" %}aria-current="page"{% endif %}>Plates</a>
     <a href="/models" {% if nav == "models" %}aria-current="page"{% endif %}>Models</a>
+    <a href="/stock" {% if nav == "stock" %}aria-current="page"{% endif %}>Stock</a>
     <a href="/filament" {% if nav == "filament" %}aria-current="page"{% endif %}>Filament</a>
+    {% if role == "admin" %}<a href="/settings" {% if nav == "settings" %}aria-current="page"{% endif %}>Settings</a>{% endif %}
   </nav>
   {% endif %}
   <main class="wrap">
+    {% if notice %}<p class="notice-bar" role="status">{{ notice }}</p>{% endif %}
     {% block content %}{% endblock %}
   </main>
   {% if user %}
   <footer class="wrap foot">
-    <span>{{ user.username }}{% if user.is_admin %} · admin{% endif %}</span>
+    <span>{{ user.username }} · {{ role }}</span>
     <form method="post" action="/auth/logout"><button class="link" type="submit">Sign out</button></form>
   </footer>
   {% endif %}

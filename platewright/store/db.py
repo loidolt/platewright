@@ -73,6 +73,12 @@ class RunRow:
     good_by_model: dict
     matched_by_name: bool
     notes: str
+    planned_by_model: dict = None  # type: ignore[assignment]
+    failures: dict = None  # type: ignore[assignment]
+    reviewed_at: str | None = None
+    reviewed_by: str = ""
+    aborted_pct: int | None = None
+    version_id: int = 0
 
     @property
     def good(self) -> int:
@@ -357,7 +363,9 @@ class Store:
                 date=r["date"], printer=r["printer"], outcome=r["outcome"], source=r["source"], verdict=r["verdict"],
                 hours=r["hours"], grams=r["grams"], planned=r["units"],
                 good_by_model=good_by_model(planned, r["outcome"], failures.get(r["id"])),
-                matched_by_name=bool(r["matched_by_name"]), notes=r["notes"]))
+                matched_by_name=bool(r["matched_by_name"]), notes=r["notes"], planned_by_model=planned,
+                failures=failures.get(r["id"], {}), reviewed_at=r["reviewed_at"], reviewed_by=r["reviewed_by"],
+                aborted_pct=r["aborted_pct"], version_id=r["vid"]))
         return out
 
     def run_totals(self, since: str | None = None) -> list[RunTotals]:
@@ -407,3 +415,140 @@ class Store:
 
     def active_plates(self) -> list[ActivePlate]:
         return [ActivePlate(p.code, p.units, p.hours, p.mix) for p in self.plates(active_only=True)]
+
+    # -- writes (phase 2) -----------------------------------------------------------------
+
+    def model(self, slug: str) -> sqlite3.Row | None:
+        return next((r for r in self.models() if r["slug"] == slug), None)
+
+    def update_model(self, slug: str, aliases: list[str] | None = None, **fields) -> None:
+        allowed = {"name", "ref", "url", "designer", "license", "distribution_ok", "min_age", "small_parts",
+                   "parts_per_unit", "bambuddy_file_id", "notes"}
+        bad = set(fields) - allowed
+        if bad:
+            raise ValueError(f"unknown model fields: {bad}")
+        with self.tx() as db:
+            mid = db.execute("SELECT id FROM models WHERE slug = ?", (slug,)).fetchone()["id"]
+            if fields:
+                db.execute(f"UPDATE models SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                           (*fields.values(), mid))
+            if aliases is not None:
+                db.execute("DELETE FROM model_aliases WHERE model_id = ?", (mid,))
+                for a in dict.fromkeys(a.strip() for a in aliases if a.strip()):
+                    db.execute("INSERT INTO model_aliases (model_id, alias) VALUES (?, ?)", (mid, a))
+
+    def add_alias(self, slug: str, alias: str) -> None:
+        self.q("INSERT OR IGNORE INTO model_aliases (model_id, alias) SELECT id, ? FROM models WHERE slug = ?",
+               alias.strip(), slug)
+
+    def qualify(self, slug: str, result: str, notes: str = "", by: str = "") -> None:
+        with self.tx() as db:
+            mid = db.execute("SELECT id FROM models WHERE slug = ?", (slug,)).fetchone()["id"]
+            db.execute("INSERT INTO qualifications (model_id, result, notes, at, by) VALUES (?, ?, ?, ?, ?)",
+                       (mid, result, notes, now(), by))
+            db.execute("UPDATE models SET status = ? WHERE id = ?",
+                       ("qualified" if result == "pass" else "failed-test", mid))
+
+    def qualifications(self, slug: str) -> list[sqlite3.Row]:
+        return self.q("SELECT q.* FROM qualifications q JOIN models m ON m.id = q.model_id WHERE m.slug = ? "
+                      "ORDER BY q.at DESC", slug)
+
+    def plate(self, code: str) -> PlateRow | None:
+        versions = self.plate_versions(code)
+        return versions[0] if versions else None
+
+    def set_version_file(self, version_id: int, bambuddy_file_id: int | None) -> None:
+        self.q("UPDATE plate_versions SET bambuddy_file_id = ? WHERE id = ?", bambuddy_file_id, version_id)
+
+    def set_plate_active(self, code: str, active: bool) -> None:
+        self.q("UPDATE plates SET active = ? WHERE code = ?", int(active), code)
+
+    def to_review(self, days: int = 30, today: dt.date | None = None) -> list[RunRow]:
+        """Finished good prints nobody has looked at yet: confirm all good, or record bad parts."""
+        since = ((today or dt.date.today()) - dt.timedelta(days=days)).isoformat()
+        return [r for r in self.runs(since) if r.outcome == "ok" and not r.reviewed_at]
+
+    def run(self, run_id: int) -> RunRow | None:
+        return next((r for r in self.runs() if r.id == run_id), None)
+
+    def review_run(self, run_id: int, failures: dict[str, int], by: str) -> None:
+        """Record bad parts on a run (replacing what was there) and mark it reviewed."""
+        model_ids = {r["slug"]: r["id"] for r in self.q("SELECT id, slug FROM models")}
+        with self.tx() as db:
+            db.execute("DELETE FROM run_failures WHERE run_id = ?", (run_id,))
+            for key, n in failures.items():
+                if n <= 0:
+                    continue
+                scope = {ANY: "any", UNLINKED: "unlinked"}.get(key, "model")
+                db.execute("INSERT INTO run_failures (run_id, model_id, scope, count) VALUES (?, ?, ?, ?)",
+                           (run_id, model_ids.get(key) if scope == "model" else None, scope, n))
+            db.execute("UPDATE runs SET reviewed_at = ?, reviewed_by = ? WHERE id = ?", (now(), by, run_id))
+
+    def add_manual_run(self, version_id: int, date: str, printer: str, outcome: str, *, failures: dict | None = None,
+                       aborted_pct: int | None = None, notes: str = "", by: str = "") -> int:
+        v = self.one("SELECT hours, grams, filaments FROM plate_versions WHERE id = ?", version_id)
+        frac = (aborted_pct or 100) / 100 if outcome == "aborted" else 1.0
+        fil = {c: round(float(g) * frac, 1) for c, g in json.loads(v["filaments"]).items()}
+        with self.tx() as db:
+            rid = db.execute(
+                "INSERT INTO runs (plate_version_id, date, printer, outcome, source, hours, grams, filaments, "
+                "aborted_pct, notes, reviewed_at, reviewed_by) VALUES (?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?, ?)",
+                (version_id, date, printer, outcome, round(v["hours"] * frac, 2), round(v["grams"] * frac, 1),
+                 json.dumps(fil), aborted_pct, notes, now(), by)).lastrowid
+        if failures:
+            self.review_run(rid, failures, by)
+        return rid
+
+    def add_ledger(self, date: str, kind: str, model_slug: str | None, qty: int, *, demand_slug: str | None = None,
+                   notes: str = "", by: str = "") -> None:
+        with self.tx() as db:
+            mid = None
+            if model_slug and model_slug != UNLINKED:
+                mid = db.execute("SELECT id FROM models WHERE slug = ?", (model_slug,)).fetchone()["id"]
+            did = None
+            if demand_slug:
+                did = db.execute("SELECT id FROM demands WHERE slug = ?", (demand_slug,)).fetchone()["id"]
+            db.execute("INSERT INTO ledger (date, kind, model_id, qty, demand_id, notes, by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (date, kind, mid, qty, did, notes, by))
+
+    def ledger(self, limit: int = 50) -> list[sqlite3.Row]:
+        return self.q("SELECT l.*, m.slug, m.name AS model_name, d.slug AS demand_slug, d.name AS demand_name "
+                      "FROM ledger l LEFT JOIN models m ON m.id = l.model_id LEFT JOIN demands d ON d.id = l.demand_id "
+                      f"ORDER BY l.date DESC, l.id DESC LIMIT {int(limit)}")
+
+    def demands(self) -> list[sqlite3.Row]:
+        return self.q("SELECT * FROM demands ORDER BY status = 'done', due, slug")
+
+    def demand(self, slug: str) -> sqlite3.Row | None:
+        return self.one("SELECT * FROM demands WHERE slug = ?", slug)
+
+    def demand_needs(self, slug: str) -> dict[str, int]:
+        return {r["slug"]: r["qty"] for r in self.q(
+            "SELECT m.slug, n.qty FROM demand_needs n JOIN models m ON m.id = n.model_id "
+            "JOIN demands d ON d.id = n.demand_id WHERE d.slug = ?", slug)}
+
+    def save_demand(self, slug: str, *, name: str, kind: str, due: str, target: int, notes: str,
+                    needs: dict[str, int], by: str = "") -> None:
+        model_ids = {r["slug"]: r["id"] for r in self.q("SELECT id, slug FROM models")}
+        with self.tx() as db:
+            row = db.execute("SELECT id FROM demands WHERE slug = ?", (slug,)).fetchone()
+            if row is None:
+                did = db.execute("INSERT INTO demands (slug, kind, name, due, target, notes, created_at, created_by) "
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                 (slug, kind, name, due, target, notes, now(), by)).lastrowid
+            else:
+                did = row["id"]
+                db.execute("UPDATE demands SET kind = ?, name = ?, due = ?, target = ?, notes = ? WHERE id = ?",
+                           (kind, name, due, target, notes, did))
+            db.execute("DELETE FROM demand_needs WHERE demand_id = ?", (did,))
+            for s, n in needs.items():
+                if n > 0:
+                    db.execute("INSERT INTO demand_needs (demand_id, model_id, qty) VALUES (?, ?, ?)",
+                               (did, model_ids[s], n))
+
+    def set_demand_status(self, slug: str, status: str) -> None:
+        self.q("UPDATE demands SET status = ? WHERE slug = ?", status, slug)
+
+    def set_demand_project(self, slug: str, project_id: int | None) -> None:
+        self.q("UPDATE demands SET bambuddy_project_id = ? WHERE slug = ?", project_id, slug)
+

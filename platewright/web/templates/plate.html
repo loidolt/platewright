@@ -22,8 +22,45 @@
   <p class="muted">Accepted with warnings:</p>
   <ul>{% for w in p.warnings %}<li class="warn">{{ w }}</li>{% endfor %}</ul>
   {% endif %}
-  {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}{% endif %}
+  <div class="row">
+    {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}
+    {% elif p.active %}<span class="warn small">Not in Bambuddy's library yet.</span>
+      {% if role == "admin" %}<form method="post" action="/plates/{{ p.code }}/publish"><button class="btn small" type="submit">Upload to Bambuddy</button></form>{% endif %}
+    {% endif %}
+    {% if role == "admin" %}<a class="btn small" href="/plates/new">New version</a>{% endif %}
+  </div>
+  {% if role == "admin" and p.active %}
+  <details class="danger">
+    <summary class="muted small">Retire this plate…</summary>
+    <form method="post" action="/plates/{{ p.code }}/retire">
+      <p class="small">It stops counting as a production plate, and its file moves to
+        "{{ settings.retired_folder }}" in Bambuddy so it isn't printed by mistake. Runs already made stay.</p>
+      <button class="btn small" type="submit">Retire plate {{ p.code }}</button>
+    </form>
+  </details>
+  {% endif %}
 </section>
+
+{% if p.active and can(user, settings, "operator") %}
+<section class="card">
+  <details>
+    <summary><strong>Log a run by hand</strong> <span class="muted small">for prints Bambuddy didn't see</span></summary>
+    <form method="post" action="/plates/{{ p.code }}/runs" class="stack">
+      <div class="row">
+        <label>Date <input type="date" name="date" value="{{ today }}" max="{{ today }}" required></label>
+        <label>Outcome
+          <select name="outcome"><option value="ok">finished</option><option value="aborted">stopped early</option><option value="failed">failed</option></select></label>
+      </div>
+      <div class="row">
+        <label>Bad {{ settings.unit() }} <input type="number" name="bad" min="0" max="{{ p.units }}" value="0" inputmode="numeric"></label>
+        <label>% done, if stopped <input type="number" name="aborted_pct" min="0" max="99" inputmode="numeric"></label>
+      </div>
+      <label>Notes <input type="text" name="notes"></label>
+      <div><button class="btn" type="submit">Log run</button></div>
+    </form>
+  </details>
+</section>
+{% endif %}
 
 {% if versions | length > 1 %}
 <section class="card">

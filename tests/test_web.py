@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import datetime as dt
 import hashlib
 import io
@@ -129,8 +130,9 @@ def store():
 
 
 @pytest.fixture
-def client(fake, store):
-    app = create_app(CONFIG, transport=httpx.MockTransport(fake.handler), store=store)
+def client(fake, store, tmp_path):
+    cfg = dataclasses.replace(CONFIG, data_dir=str(tmp_path))
+    app = create_app(cfg, transport=httpx.MockTransport(fake.handler), store=store)
     with TestClient(app, base_url="https://plates.example.test", follow_redirects=False) as c:
         yield c
 
@@ -339,9 +341,9 @@ def test_today_page_and_badge(client, fake, store):
     sign_in(client, fake)
     r = client.post("/sync")
     assert r.status_code == 200 and "2 new" in r.text
-    assert fake.badges[-1] == {"url": "https://plates.example.test", "count": 1}  # one without a verdict
+    assert fake.badges[-1] == {"url": "https://plates.example.test", "count": 2}  # two runs to review
     page = client.get("/").text
-    assert "Waiting for a verdict" in page and 'data-bambuddy-path="/archives/10"' in page
+    assert "To review" in page and 'data-bambuddy-path="/archives/10"' in page and "No good / reject" in page
     assert "<strong>8</strong> / 500 good toys" in page
     printing = client.get("/partials/printing").text
     assert "PLATE-N_4up" in printing and "42%" in printing and "2 h 5 min left" in printing
@@ -371,7 +373,7 @@ def test_empty_pages_explain_themselves(client, fake):
     sign_in(client, fake)
     assert "No plates locked yet" in client.get("/plates").text
     assert "No models registered yet" not in client.get("/models").text  # Nunu exists in this store
-    assert "Nothing waiting" in client.get("/").text
+    assert "Nothing to review" in client.get("/").text
 
 
 def test_sync_needs_admin(client, fake, store):

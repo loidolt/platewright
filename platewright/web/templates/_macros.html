@@ -14,7 +14,21 @@
 
 {% macro outcome(run) -%}
 {%- if run.outcome == "ok" and run.verdict == "good" -%}<span class="pill good">good</span>
+{%- elif run.outcome == "ok" and run.source == "manual" -%}<span class="pill">logged by hand</span>
 {%- elif run.outcome == "ok" -%}<span class="pill warn">no verdict</span>
 {%- elif run.outcome == "rejected" -%}<span class="pill bad">rejected</span>
 {%- else -%}<span class="pill bad">{{ run.outcome }}</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro model_badges(m) -%}
+<p class="pills">
+  {% if m.status == "qualified" %}<span class="pill good">test print passed</span>
+  {% elif m.status == "failed-test" %}<span class="pill bad">test print failed</span>
+  {% else %}<span class="pill warn">not test-printed</span>{% endif %}
+  {% if m.distribution_ok == "yes" %}<span class="pill good">may hand out</span>
+  {% elif m.distribution_ok == "no" %}<span class="pill bad">may not hand out</span>
+  {% else %}<span class="pill warn">license unchecked</span>{% endif %}
+  {% if m.min_age is not none %}<span class="pill">{{ m.min_age }}+</span>{% endif %}
+  {% if m.small_parts == "yes" %}<span class="pill warn">small parts</span>{% endif %}
+</p>
 {%- endmacro %}

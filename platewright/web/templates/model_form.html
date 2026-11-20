@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ model.name if model else "New model" }} · Platewright{% endblock %}
+{% block content %}
+<p><a href="{{ '/models/' ~ model.slug if model else '/models' }}">← {{ model.name if model else "Models" }}</a></p>
+<h1>{{ "Edit " ~ model.name if model else "Add a model" }}</h1>
+<form method="post" action="{{ '/models/' ~ model.slug if model else '/models' }}" class="card stack">
+  <label>Name <input type="text" name="name" required value="{{ model.name if model else '' }}"></label>
+  <label>Catalog number or code <span class="muted small">optional, e.g. 91</span>
+    <input type="text" name="ref" value="{{ model.ref if model else '' }}"{% if model %} readonly{% endif %}></label>
+  <label>Source link <input type="url" name="url" placeholder="https://makerworld.com/…" value="{{ model.url if model else '' }}"></label>
+  <label>Designer <input type="text" name="designer" value="{{ model.designer if model else '' }}"></label>
+  <label>License <span class="muted small">as the model page states it</span>
+    <input type="text" name="license" placeholder="e.g. CC BY-NC 4.0" value="{{ model.license if model else '' }}"></label>
+  <label>May prints be handed out?
+    <select name="distribution_ok">
+      {% for v, t in [("unknown", "not checked"), ("yes", "yes, the license allows it"), ("no", "no")] %}
+      <option value="{{ v }}" {% if (model.distribution_ok if model else "unknown") == v %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select></label>
+  <div class="row">
+    <label>Youngest age <input type="number" name="min_age" min="0" max="99" inputmode="numeric" value="{{ model.min_age if model and model.min_age is not none else '' }}"></label>
+    <label>Small parts?
+      <select name="small_parts">
+        {% for v in ["unknown", "yes", "no"] %}<option value="{{ v }}" {% if (model.small_parts if model else "unknown") == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select></label>
+    <label>Slicer objects per {{ settings.unit(1) }} <input type="number" name="parts_per_unit" min="1" max="50" value="{{ model.parts_per_unit if model else 1 }}"></label>
+  </div>
+  <label>Names the slicer gives it <span class="muted small">one per line; numbered copies ("Nunu 2") match on their own</span>
+    <textarea name="aliases" rows="3">{{ model.aliases.split("\x1f") | join("\n") if model and model.aliases else "" }}</textarea></label>
+  <label>Source file in Bambuddy's library
+    <select name="bambuddy_file_id">
+      <option value="">none</option>
+      {% for f in files %}<option value="{{ f.id }}" {% if model and model.bambuddy_file_id == f.id %}selected{% endif %}>{{ f.filename }}{% if f.folder_name %} · {{ f.folder_name }}{% endif %}</option>{% endfor %}
+    </select>
+    {% if files_error %}<span class="bad small">Bambuddy's library couldn't be read: {{ files_error }}</span>{% endif %}</label>
+  <label>Notes <textarea name="notes" rows="2">{{ model.notes if model else '' }}</textarea></label>
+  <div><button class="btn btn-accent" type="submit">{{ "Save" if model else "Add model" }}</button></div>
+</form>
+{% endblock %}

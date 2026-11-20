@@ -162,6 +162,55 @@ class Bambuddy:
     async def printer_status(self, printer_id: int) -> dict:
         return await self.get(f"/printers/{printer_id}/status") or {}
 
+    # -- writes with the API key (Queue, Manage library, Manage projects) -----------------
+
+    async def send(self, method: str, path: str, *, json=None, params: dict | None = None, files=None,
+                   timeout: float = 30):
+        try:
+            response = await self._http.request(
+                method, path, json=json, files=files, timeout=timeout,
+                params={k: v for k, v in (params or {}).items() if v is not None},
+                headers={"X-API-Key": self.settings.bambuddy_key})
+        except httpx.HTTPError as exc:
+            raise BambuddyError(f"Bambuddy unreachable: {type(exc).__name__}") from exc
+        if response.status_code not in (200, 201):
+            hint = " (does the API key have this permission?)" if response.status_code in (401, 403) else ""
+            raise BambuddyError(f"{method} {path}: HTTP {response.status_code} {_error_code(response)}{hint}",
+                                response.status_code)
+        try:
+            return response.json() if response.content else None
+        except ValueError:
+            return None
+
+    async def folder_id(self, name: str) -> int:
+        """A top-level library folder by name, created if missing."""
+        for f in await self.get("/library/folders") or []:
+            if f.get("name") == name and not f.get("parent_id"):
+                return int(f["id"])
+        return int((await self.send("POST", "/library/folders", json={"name": name}))["id"])
+
+    async def library_files(self, folder_id: int | None) -> list[dict]:
+        return await self.get("/library/files", folder_id=folder_id, include_root=False) or []
+
+    async def library_file(self, file_id: int) -> dict:
+        return await self.get(f"/library/files/{file_id}") or {}
+
+    async def upload(self, filename: str, data: bytes, folder_id: int | None) -> dict:
+        return await self.send("POST", "/library/files", params={"folder_id": folder_id},
+                               files={"file": (filename, data, "application/octet-stream")}, timeout=300)
+
+    async def move_files(self, file_ids: list[int], folder_id: int | None) -> None:
+        await self.send("POST", "/library/files/move", json={"file_ids": file_ids, "folder_id": folder_id})
+
+    async def create_project(self, body: dict) -> dict:
+        return await self.send("POST", "/projects/", json=body)
+
+    async def update_project(self, project_id: int, body: dict) -> dict:
+        return await self.send("PATCH", f"/projects/{project_id}", json=body)
+
+    async def add_to_queue(self, body: dict) -> dict:
+        return await self.send("POST", "/queue/", json=body)
+
 
 class BambuddyError(Exception):
     def __init__(self, message: str, status: int | None = None):

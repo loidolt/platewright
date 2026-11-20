@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ d.name if d else "Add demand" }} · Platewright{% endblock %}
+{% block content %}
+<p><a href="{{ '/demand/' ~ d.slug if d else '/demand' }}">← {{ d.name if d else "Demand" }}</a></p>
+<h1>{{ "Edit " ~ d.name if d else "Add an order, event or restock target" }}</h1>
+<form method="post" action="{{ '/demand/' ~ d.slug ~ '/edit' if d else '/demand' }}" class="card stack">
+  <label>Name <input type="text" name="name" required value="{{ d.name if d else '' }}" placeholder="e.g. Christmas outreach"></label>
+  <div class="row">
+    <label>Kind <select name="kind">{% for k in ["event", "order", "restock"] %}<option value="{{ k }}" {% if d and d.kind == k %}selected{% endif %}>{{ k }}</option>{% endfor %}</select></label>
+    <label>Needed by <input type="date" name="due" required value="{{ d.due if d else '' }}"></label>
+    <label>Total <span class="muted small">0 = the needs below added up</span>
+      <input type="number" name="target" min="0" value="{{ d.target if d else 0 }}" inputmode="numeric"></label>
+  </div>
+  {% if models %}
+  <fieldset>
+    <legend>Needed per model <span class="muted small">optional; the rest of the total can be any model</span></legend>
+    <div class="row">
+      {% for m in models %}<label>{{ m.name }} <input type="number" name="need_{{ m.slug }}" min="0" value="{{ needs.get(m.slug, '') }}" inputmode="numeric"></label>{% endfor %}
+    </div>
+  </fieldset>
+  {% endif %}
+  <label>Notes <textarea name="notes" rows="2">{{ d.notes if d else '' }}</textarea></label>
+  <div><button class="btn btn-accent" type="submit">{{ "Save" if d else "Add" }}</button></div>
+</form>
+{% endblock %}

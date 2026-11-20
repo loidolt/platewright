@@ -44,29 +44,22 @@
 </section>
 
 <section class="card">
-  <h2>Waiting for a verdict</h2>
-  {% if awaiting %}
-  <p class="muted">Finished production prints with no good / reject in Bambuddy yet. They count as all good until then.</p>
-  <ul class="list">
-    {% for r in awaiting %}
-    <li>
-      <span><strong>Plate {{ r.plate_code }}</strong> v{{ r.version }} · {{ r.date | fmt_date }} · {{ r.planned }} {{ settings.unit() }}</span>
-      {% if r.archive_id %}{{ bb_link("/archives/" ~ r.archive_id, "Open in Bambuddy", "btn small") }}{% endif %}
-    </li>
-    {% endfor %}
-  </ul>
+  <h2>To review</h2>
+  {% if review %}
+  <p class="muted">Finished prints of production plates. Confirm all good, or count the bad {{ settings.unit() }}.</p>
+  {% for run in review %}{% include "_review.html" %}{% endfor %}
   {% else %}
-  <p class="muted">Nothing waiting.</p>
+  <p class="muted">Nothing to review.</p>
   {% endif %}
 </section>
 
 <section class="card">
-  <h2>Demand</h2>
+  <h2><a href="/demand">Demand</a></h2>
   {% if plan %}
   <ul class="list">
     {% for p in plan %}
     <li>
-      <span><strong>{{ p.demand.name }}</strong> · {{ p.demand.due | fmt_date }}
+      <span><a href="/demand/{{ p.demand.slug }}"><strong>{{ p.demand.name }}</strong></a> · {{ p.demand.due | fmt_date }}
         {% if p.days < 0 %}<span class="bad">(date passed)</span>{% else %}(in {{ p.days }} days){% endif %}
         · {{ p.demand.total }} {{ settings.unit() }}</span>
       {% if not p.short %}<span class="pill good">covered</span>
@@ -78,7 +71,7 @@
   {% else %}
   <p class="muted">No open orders, events or restock targets.</p>
   {% endif %}
-  <p class="muted">Finished {{ settings.unit() }} on hand: {{ on_hand }}</p>
+  <p class="muted"><a href="/stock">Finished {{ settings.unit() }} on hand: {{ on_hand }}</a></p>
 </section>
 
 <section class="card">

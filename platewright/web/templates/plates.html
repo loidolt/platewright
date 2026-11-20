@@ -2,12 +2,15 @@
 {% from "_macros.html" import bb_link, mix %}
 {% block title %}Plates · Platewright{% endblock %}
 {% block content %}
-<h1>Plates</h1>
+<div class="title-row">
+  <h1>Plates</h1>
+  {% if role == "admin" %}<a class="btn btn-accent" href="/plates/new">New plate</a>{% endif %}
+</div>
 {% if not plates %}
 <section class="card">
   <p>No plates locked yet.</p>
   <p class="muted">A plate is a sliced file that passed the checks (printer, palette, test-printed models,
-    license, hours) and was locked as a version. Locking plates arrives in the next phase.</p>
+    license, hours) and was locked as a version. Only locked plates go to the printer.</p>
 </section>
 {% endif %}
 {% for p in plates %}
@@ -21,7 +24,8 @@
     <dt>Filament</dt><dd>{{ p.grams }} g · {{ p.g_per_unit }} g per {{ settings.unit(1) }} · {{ p.color_changes }} color changes</dd>
     <dt>Printer</dt><dd>{{ p.printer_model or "unknown" }}{% if p.nozzle %}, {{ p.nozzle }} mm nozzle{% endif %}</dd>
   </dl>
-  {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}{% endif %}
+  {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}
+  {% elif p.active %}<p class="warn small">Not in Bambuddy's library yet.</p>{% endif %}
 </section>
 {% endfor %}
 {% endblock %}

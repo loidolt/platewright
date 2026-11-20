@@ -76,6 +76,14 @@
     window.parent.postMessage({ type: "bambuddy:navigate", path: link.dataset.bambuddyPath }, BAMBUDDY);
   });
 
+  // "Back" on an error page: return to the form, keeping what was typed.
+  document.addEventListener("click", function (e) {
+    var back = e.target.closest && e.target.closest("[data-back]");
+    if (!back || window.history.length < 2) return;
+    e.preventDefault();
+    window.history.back();
+  });
+
   // Color swatches: set from data-hex (inline styles are refused by the CSP).
   function paint(scope) {
     (scope || document).querySelectorAll("[data-hex]").forEach(function (el) {

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}New plate · Platewright{% endblock %}
+{% block content %}
+<p><a href="/plates">← Plates</a></p>
+<h1>New plate</h1>
+{% if error %}
+<section class="card notice">
+  <p class="bad">{{ error }}</p>
+  {% if details %}<ul>{% for d in details %}<li>{{ d }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+<form method="post" action="/plates/new" enctype="multipart/form-data" class="card stack">
+  <p>Slice one plate in the slicer, then <strong>File › Export › Export plate sliced file</strong>.
+    Choose that <code>.gcode.3mf</code> here. Nothing is locked until you check it and press Lock.</p>
+  <label>Sliced plate <input type="file" name="file" accept=".3mf,.gcode.3mf" required></label>
+  <div><button class="btn btn-accent" type="submit">Check it</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Settings · Platewright{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% if errors %}<section class="card notice"><ul>{% for e in errors %}<li class="bad">{{ e }}</li>{% endfor %}</ul></section>{% endif %}
+<form method="post" action="/settings" class="stack">
+  <section class="card stack">
+    <h2>Wording and targets</h2>
+    <div class="row">
+      <label>One printed thing is a <input type="text" name="unit_name" value="{{ s.unit_name }}" required placeholder="part, toy, piece"></label>
+      <label>Good {{ s.unit() }} per month <span class="muted small">0 = no target</span>
+        <input type="number" name="period_target" min="0" value="{{ s.period_target }}" inputmode="numeric"></label>
+    </div>
+    <div class="row">
+      <label>Longest plate, hours <input type="number" name="max_plate_hours" min="1" step="0.5" value="{{ s.max_plate_hours }}"></label>
+      <label>Fail rate until measured, % <input type="number" name="assumed_fail_rate" min="0" max="90" step="0.5" value="{{ (s.assumed_fail_rate * 100) | round(1) }}"></label>
+      <label>Reorder filament with fewer days left than <input type="number" name="reorder_days" min="1" value="{{ s.reorder_days | int }}"></label>
+    </div>
+    <label>Operators <span class="muted small">Bambuddy group whose members review prints and record {{ s.unit() }} going out</span>
+      <input type="text" name="operator_group" value="{{ s.operator_group }}"></label>
+    <div class="row">
+      <label>Bambuddy folder for production plates <input type="text" name="library_folder" value="{{ s.library_folder }}" required></label>
+      <label>… and for retired ones <input type="text" name="retired_folder" value="{{ s.retired_folder }}" required></label>
+    </div>
+  </section>
+
+  <section class="card stack">
+    <h2>Printers</h2>
+    <p class="muted small">Model exactly as the slicer writes it (a plate sliced for any other model is refused).
+      Bambuddy name only if it differs from the name here.</p>
+    {% for key, p in (s.printers.items() | list) + [("", {}), ("", {})] %}
+    <div class="row editrow">
+      <label>Name <input type="text" name="printer_key" value="{{ key }}"></label>
+      <label>Model <input type="text" name="printer_model" value="{{ p.get('model', '') }}" placeholder="Bambu Lab X1 Carbon"></label>
+      <label>Plates per day <input type="number" name="printer_per_day" min="0" step="0.5" value="{{ p.get('plates_per_day', 1) if key else '' }}"></label>
+      <label class="wide-only">Model ID <input type="text" name="printer_model_id" value="{{ p.get('model_id', '') }}"></label>
+      <label>Bambuddy name <input type="text" name="printer_bambuddy_name" value="{{ p.get('bambuddy_name', '') }}"></label>
+    </div>
+    {% endfor %}
+    <p class="muted small">Clear a name to remove a printer.</p>
+  </section>
+
+  <section class="card stack">
+    <h2>Palette</h2>
+    <p class="muted small">Every filament color you keep loaded. The hex must match the color the slicer shows;
+      spools in Bambuddy count toward a color when hex and material match.</p>
+    {% for name, c in (s.palette.items() | list) + [("", {}), ("", {}), ("", {})] %}
+    <div class="row editrow">
+      <label>Name <input type="text" name="color_name" value="{{ name }}"></label>
+      <label>Hex <span class="swatch" data-hex="{{ c.get('hex', '') | norm_hex }}"></span><input type="text" name="color_hex" value="{{ c.get('hex', '') }}" placeholder="#9D432C" size="8"></label>
+      <label>Material <input type="text" name="color_material" value="{{ c.get('material', '') }}" placeholder="PLA" size="6"></label>
+      <label>Slot <input type="text" name="color_slot" value="{{ c.get('slot', '') }}" placeholder="A1" size="4"></label>
+      <label>Backup <input type="text" name="color_backup" value="{{ c.get('backup_slot', '') }}" size="4"></label>
+    </div>
+    {% endfor %}
+    <p class="muted small">Clear a name to remove a color.</p>
+  </section>
+
+  <div><button class="btn btn-accent" type="submit">Save settings</button> <a class="btn" href="/settings/export">Download as JSON</a></div>
+</form>
+
+<section class="card">
+  <h2>Bambuddy</h2>
+  {% include "_sync.html" %}
+  <p class="muted small">The API key needs Read Status and Send notifications; locking plates also needs Manage Library,
+    and queueing needs Queue and Manage Projects.</p>
+</section>
+{% endblock %}
