@@ -206,3 +206,15 @@ def test_config_requires_urls_outside_dev(monkeypatch):
         config.load()
     monkeypatch.setenv("PLATEWRIGHT_DEV", "1")
     assert config.load().public_url == "http://localhost:3710"
+
+
+def test_access_log_redacts_callback_code():
+    import logging
+
+    from platewright.web.app import RedactCallbackQuery
+
+    record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+                               ("1.2.3.4:5", "GET", "/auth/callback?code=secret&state=s", "1.1", 303), None)
+    RedactCallbackQuery().filter(record)
+    assert "secret" not in record.getMessage()
+    assert "/auth/callback?…" in record.getMessage()
