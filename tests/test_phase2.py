@@ -18,7 +18,7 @@ class WritableBambuddy(FakeBambuddy):
 
     def __init__(self):
         super().__init__()
-        self.folders = [{"id": 1, "name": "Models", "parent_id": None}]
+        self.folders = [{"id": 1, "name": "MakerWorld", "parent_id": None, "children": []}]
         self.files: dict[int, dict] = {50: {"id": 50, "filename": "nunu.3mf", "folder_id": 1, "file_hash": "m"}}
         self.projects: dict[int, dict] = {}
         self.queue: list[dict] = []
@@ -31,14 +31,19 @@ class WritableBambuddy(FakeBambuddy):
         if path == "/api/v1/library/folders" and method == "GET":
             return httpx.Response(200, json=self.folders)
         if path == "/api/v1/library/folders" and method == "POST":
-            f = {"id": len(self.folders) + 1, "name": json.loads(request.content)["name"], "parent_id": None}
+            f = {"id": len(self.folders) + 1, "name": json.loads(request.content)["name"], "parent_id": None, "children": []}
             self.folders.append(f)
             return httpx.Response(200, json=f)
         if path == "/api/v1/library/files" and method == "GET":
-            if request.url.params.get("recursive") == "true":
-                return httpx.Response(200, json=list(self.files.values()))
-            fid = int(request.url.params.get("folder_id", 0))
-            return httpx.Response(200, json=[f for f in self.files.values() if f["folder_id"] == fid])
+            # Like Bambuddy v1.3.1: files of one folder (none = files outside folders); recursive
+            # only with a folder, then its subfolders too.
+            fid = request.url.params.get("folder_id")
+            if fid is None:
+                return httpx.Response(200, json=[f for f in self.files.values() if f["folder_id"] is None])
+            fid = int(fid)
+            inside = {fid} | ({f["id"] for f in self.folders if f.get("parent_id") == fid}
+                              if request.url.params.get("recursive") == "true" else set())
+            return httpx.Response(200, json=[f for f in self.files.values() if f["folder_id"] in inside])
         if path == "/api/v1/library/files" and method == "POST":
             body = request.read()
             name = body.split(b'filename="', 1)[1].split(b'"', 1)[0].decode()
@@ -177,7 +182,7 @@ def test_check_link_lock_and_publish(client, fake, store):
     client.post(f"/plates/new/{sha}/alias", data={"name": "Mystery", "model": "nunu"})
     assert "Everything checks out" in client.get(f"/plates/new/{sha}").text
     r = client.post(f"/plates/new/{sha}/lock", data={"code": "m", "description": "mix"})
-    assert r.headers["location"].startswith("/plates/M?notice=") and "library" in r.headers["location"]
+    assert r.headers["location"].startswith("/plates/M?notice=") and "File+Manager" in r.headers["location"]
     p = store.plate("M")
     assert p.units == 4 and p.mix == {"nunu": 4}
     lib = fake.files[p.bambuddy_file_id]
@@ -222,7 +227,7 @@ def test_upload_failure_leaves_the_plate_locked(client, fake, store):
     r, _ = lock_via_web(client)
     assert "not+in+Bambuddy+yet" in r.headers["location"] and "permission" in r.headers["location"]
     assert store.plate("N").bambuddy_file_id is None
-    assert "Upload to Bambuddy" in client.get("/plates/N").text
+    assert "Put it in File Manager" in client.get("/plates/N").text
 
 
 # -- review and runs ------------------------------------------------------------------------
@@ -410,3 +415,17 @@ def test_settings_refuse_one_folder_for_both(client, fake, store):
 def test_thumbnails_only_for_linked_files(client, fake):
     sign_in(client, fake)
     assert client.get("/thumb/50").status_code == 404  # no model links file 50 yet
+
+
+def test_source_file_list_walks_folders_like_bambuddy(client, fake, store):
+    sign_in(client, fake)
+    sub = {"id": 9, "name": "Krin", "parent_id": 1, "children": []}
+    fake.folders[0]["children"] = [sub]
+    fake.folders.append(sub)
+    fake.files[60] = {"id": 60, "filename": "#93 krin (green fox).3mf", "folder_id": 9, "file_hash": "k"}
+    fake.files[61] = {"id": 61, "filename": "loose.stl", "folder_id": None, "file_hash": "l"}
+    lock_via_web(client)  # puts a .gcode.3mf in "Production plates"
+    page = client.get("/models/new").text
+    assert "Source file in File Manager" in page
+    assert "#93 krin (green fox).3mf · MakerWorld / Krin" in page and "nunu.3mf · MakerWorld" in page
+    assert "loose.stl" in page and "PLATE-N" not in page

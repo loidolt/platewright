@@ -24,8 +24,8 @@
   {% endif %}
   <div class="row">
     {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}
-    {% elif p.active %}<span class="warn small">Not in Bambuddy's library yet.</span>
-      {% if role == "admin" %}<form method="post" action="/plates/{{ p.code }}/publish"><button class="btn small" type="submit">Upload to Bambuddy</button></form>{% endif %}
+    {% elif p.active %}<span class="warn small">Not in File Manager yet.</span>
+      {% if role == "admin" %}<form method="post" action="/plates/{{ p.code }}/publish"><button class="btn small" type="submit">Put it in File Manager</button></form>{% endif %}
     {% endif %}
     {% if role == "admin" %}<a class="btn small" href="/plates/new">New version</a>{% endif %}
   </div>

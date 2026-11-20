@@ -27,12 +27,13 @@
   </div>
   <label>Names the slicer gives it <span class="muted small">one per line; numbered copies ("Nunu 2") match on their own</span>
     <textarea name="aliases" rows="3">{{ model.aliases.split("\x1f") | join("\n") if model and model.aliases else "" }}</textarea></label>
-  <label>Source file in Bambuddy's library
+  <label>Source file in File Manager
     <select name="bambuddy_file_id">
       <option value="">none</option>
       {% for f in files %}<option value="{{ f.id }}" {% if model and model.bambuddy_file_id == f.id %}selected{% endif %}>{{ f.filename }}{% if f.folder_name %} · {{ f.folder_name }}{% endif %}</option>{% endfor %}
     </select>
-    {% if files_error %}<span class="bad small">Bambuddy's library couldn't be read: {{ files_error }}</span>{% endif %}</label>
+    {% if files_error %}<span class="bad small">File Manager couldn't be read: {{ files_error }}</span>
+    {% elif not files %}<span class="muted small">No model files there yet: import from MakerWorld (Model Sources) or upload a .3mf in File Manager.</span>{% endif %}</label>
   <label>Notes <textarea name="notes" rows="2">{{ model.notes if model else '' }}</textarea></label>
   <div><button class="btn btn-accent" type="submit">{{ "Save" if model else "Add model" }}</button></div>
 </form>

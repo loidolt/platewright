@@ -61,6 +61,6 @@
     <label class="inline"><input type="checkbox" name="allow_unmapped" value="1" {% if allow_unmapped %}checked{% endif %}> lock even with colors not in the palette</label>
     <p class="muted small">Nothing overrides the printer check. <button class="link" type="submit" formmethod="get" formaction="/plates/new/{{ st.sha256 }}">Check again with these</button></p>
   </details>
-  <div><button class="btn btn-accent" type="submit" {% if c.blockers %}disabled{% endif %}>Lock and send to Bambuddy</button></div>
+  <div><button class="btn btn-accent" type="submit" {% if c.blockers %}disabled{% endif %}>Lock and put in File Manager</button></div>
 </form>
 {% endblock %}

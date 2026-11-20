@@ -146,7 +146,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         if d is None or p is None or not p.active:
             raise HTTPException(400, "Unknown demand or plate")
         if not p.bambuddy_file_id:
-            return ctx.back(f"/demand/{slug}", f"Plate {p.code} isn't in Bambuddy's library yet; upload it from its page")
+            return ctx.back(f"/demand/{slug}", f"Plate {p.code} isn't in File Manager yet; put it there from its page")
         settings = store.settings()
         key = printer or next(iter(settings.printers), "")
         if settings.printers and key not in settings.printers:
@@ -158,7 +158,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         try:
             lib = await bb.library_file(p.bambuddy_file_id)
             if lib.get("file_hash") and lib["file_hash"] != p.sha256:
-                return ctx.back(f"/demand/{slug}", f"Bambuddy's library file {p.bambuddy_file_id} isn't the locked "
+                return ctx.back(f"/demand/{slug}", f"File Manager's file {p.bambuddy_file_id} isn't the locked "
                                                    f"plate {p.code}; upload it again from the plate page")
             want = (pc.get("bambuddy_name") or key).lower()
             printers = await bb.printers()

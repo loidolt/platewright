@@ -30,14 +30,35 @@ def register(app: FastAPI, ctx: Ctx) -> None:
     store = ctx.store
 
     async def library_models() -> tuple[list[dict], str | None]:
-        """Model source files in Bambuddy's library, for linking a model to one."""
+        """Model source files in Bambuddy's File Manager, for linking a model to one. Bambuddy lists
+        files per folder (``recursive`` only works with a folder), so this walks the top-level
+        folders, leaving out the ones Platewright keeps plates in."""
+        settings = store.settings()
+        skip = {settings.library_folder, settings.retired_folder}
         try:
-            files = await ctx.bambuddy.get("/library/files", recursive=True) or []
+            tree = await ctx.bambuddy.get("/library/folders") or []
+            names: dict[int, str] = {}
+
+            def walk(nodes, path=""):
+                for n in nodes:
+                    names[n["id"]] = f"{path}{n['name']}"
+                    walk(n.get("children") or [], f"{path}{n['name']} / ")
+            walk([n for n in tree if not n.get("parent_id")])  # a flat list too: start at the top
+            files = list(await ctx.bambuddy.get("/library/files") or [])  # files outside any folder
+            for top in tree:
+                if top.get("parent_id") or top.get("name") in skip:
+                    continue
+                files += await ctx.bambuddy.get("/library/files", folder_id=top["id"], recursive=True) or []
         except BambuddyError as exc:
             return [], str(exc)
-        files = [f for f in files if (f.get("filename") or "").lower().endswith(MODEL_EXTS)
-                 and not (f.get("filename") or "").lower().endswith(".gcode.3mf")]
-        return sorted(files, key=lambda f: (f.get("filename") or "").lower())[:300], None
+        out, seen = [], set()
+        for f in files:
+            name = (f.get("filename") or "").lower()
+            if f.get("id") in seen or not name.endswith(MODEL_EXTS) or name.endswith(".gcode.3mf"):
+                continue
+            seen.add(f["id"])
+            out.append({**f, "folder_name": names.get(f.get("folder_id"), "")})
+        return sorted(out, key=lambda f: (f["folder_name"].lower(), (f.get("filename") or "").lower()))[:300], None
 
     def form_fields(name, ref, url, designer, license, distribution_ok, min_age, small_parts, parts_per_unit,
                     bambuddy_file_id, notes) -> dict:

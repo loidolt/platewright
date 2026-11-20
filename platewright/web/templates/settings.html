@@ -19,7 +19,7 @@
     <label>Operators <span class="muted small">Bambuddy group whose members review prints and record {{ s.unit() }} going out</span>
       <input type="text" name="operator_group" value="{{ s.operator_group }}"></label>
     <div class="row">
-      <label>Bambuddy folder for production plates <input type="text" name="library_folder" value="{{ s.library_folder }}" required></label>
+      <label>File Manager folder for production plates <input type="text" name="library_folder" value="{{ s.library_folder }}" required></label>
       <label>… and for retired ones <input type="text" name="retired_folder" value="{{ s.retired_folder }}" required></label>
     </div>
   </section>
@@ -89,7 +89,7 @@
   {% else %}
   <p class="muted">No backup has run yet (it runs nightly outside Platewright).</p>
   {% endif %}
-  <p class="muted small">The API key needs Read Status and Send notifications; locking plates also needs Manage Library,
+  <p class="muted small">The API key needs Read Status and Send notifications; locking plates (File Manager) also needs Manage Library,
     and queueing needs Queue and Manage Projects.</p>
 </section>
 {% endblock %}

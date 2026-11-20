@@ -25,7 +25,7 @@
     <dt>Printer</dt><dd>{{ p.printer_model or "unknown" }}{% if p.nozzle %}, {{ p.nozzle }} mm nozzle{% endif %}</dd>
   </dl>
   {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}
-  {% elif p.active %}<p class="warn small">Not in Bambuddy's library yet.</p>{% endif %}
+  {% elif p.active %}<p class="warn small">Not in File Manager yet.</p>{% endif %}
 </section>
 {% endfor %}
 {% endblock %}

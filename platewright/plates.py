@@ -1,4 +1,4 @@
-"""Locking plates: stage a sliced file, check it, lock it as a version, put it in Bambuddy's library.
+"""Locking plates: stage a sliced file, check it, lock it as a version, put it in Bambuddy's File Manager.
 
 The locked file is kept twice: Platewright's own copy under the data directory (it survives a
 deleted library file), and the copy Bambuddy prints, in the library folder for production
@@ -77,7 +77,7 @@ class PlateFiles:
     # -- locking ----------------------------------------------------------------------------
 
     async def lock(self, staged: Staged, code: str, *, description: str | None, by: str) -> tuple[int, str | None]:
-        """Lock a staged plate as the next version of ``code`` and put it in Bambuddy's library.
+        """Lock a staged plate as the next version of ``code`` and put it in Bambuddy's File Manager.
         Returns (version id, upload problem or None). A failed upload leaves the plate locked;
         it can be uploaded again from the plate page."""
         code = code.strip().upper()
@@ -138,7 +138,7 @@ class PlateFiles:
             return None
         except BambuddyError as exc:
             logger.warning("Couldn't move library file %s out: %s", p.bambuddy_file_id, exc)
-            return f"move library file {p.bambuddy_file_id} out of the production folder by hand ({exc})"
+            return f"move file {p.bambuddy_file_id} out of \"{self.store.settings().library_folder}\" in File Manager by hand ({exc})"
 
     async def retire(self, code: str) -> str | None:
         p = self.store.plate(code)
