@@ -1,76 +1,95 @@
 {% extends "base.html" %}
-{% from "_macros.html" import model_name %}
+{% from "_macros.html" import model_name, page_head, field, pill %}
 {% block title %}Stock · Platewright{% endblock %}
 {% block content %}
-<h1>Finished {{ settings.unit() }}</h1>
-<section class="card">
-  <table class="grid">
-    <thead><tr><th>Model</th><th class="num">Made</th><th class="num wide-only">Adjusted</th><th class="num">Out</th><th class="num">On hand</th></tr></thead>
-    <tbody>
-    {% for slug, s in rows %}
-      <tr>
-        <td>{% if slug in models %}<a href="/models/{{ slug }}">{{ models[slug].name }}</a>{% else %}{{ model_name(slug, models) }}{% endif %}</td>
-        <td class="num">{{ s.made }}</td><td class="num wide-only">{{ "%+d" % s.adjusted if s.adjusted else 0 }}</td>
-        <td class="num">{{ s.out }}</td>
-        <td class="num"><strong>{{ s.on_hand }}</strong>{% if s.on_hand < 0 %} <span class="pill bad">below 0</span>{% endif %}</td>
-      </tr>
-    {% else %}
-      <tr><td colspan="5" class="muted">Nothing yet.</td></tr>
-    {% endfor %}
-    </tbody>
-    {% if rows %}<tfoot><tr><th>Total</th><th class="num">{{ total.made }}</th><th class="num wide-only">{{ "%+d" % total.adjusted if total.adjusted else 0 }}</th><th class="num">{{ total.out }}</th><th class="num">{{ total.on_hand }}</th></tr></tfoot>{% endif %}
-  </table>
-  <p class="muted small">Made = good {{ settings.unit() }} from runs, after bad ones recorded in review.</p>
-</section>
+{{ page_head("Stock", "package", "Finished " ~ settings.unit() ~ ": good ones from runs, after bad ones found in review, minus what went out.") }}
 
-{% if can(user, settings, "operator") %}
-<form method="post" action="/stock/out" class="card stack">
-  <h2>Out</h2>
-  <div class="row">
-    <label>How many <input type="number" name="qty" min="1" required inputmode="numeric"></label>
-    <label>Model
-      <select name="model"><option value="">a mixed box (split by what's on hand)</option>
-        {% for slug, m in models.items() %}<option value="{{ slug }}">{{ m.name }}</option>{% endfor %}</select></label>
-  </div>
-  <div class="row">
-    <label>For <select name="demand"><option value="">nothing in particular</option>
-      {% for d in demands %}<option value="{{ d.slug }}">{{ d.name }} · {{ d.due | fmt_date }}</option>{% endfor %}</select></label>
-    <label>Date <input type="date" name="date" value="{{ today }}" max="{{ today }}"></label>
-  </div>
-  <label>Notes <input type="text" name="notes"></label>
-  <label class="inline"><input type="checkbox" name="force" value="1"> more than the records show (stock from before Platewright)</label>
-  <div><button class="btn btn-accent" type="submit">Record</button></div>
-</form>
-{% endif %}
+<div class="cols">
+  <div class="stack-lg">
+    <section class="card flush">
+      <div class="card-head"><h2 class="card-title">On Hand</h2></div>
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Model</th><th class="num">Made</th><th class="num wide-only">Adjusted</th><th class="num">Out</th><th class="num">On hand</th></tr></thead>
+        <tbody>
+        {% for slug, s in rows %}
+          <tr>
+            <td>{% if slug in models %}<a href="/models/{{ slug }}">{{ models[slug].name }}</a>{% else %}{{ model_name(slug, models) }}{% endif %}</td>
+            <td class="num">{{ s.made }}</td><td class="num wide-only">{{ "%+d" % s.adjusted if s.adjusted else 0 }}</td>
+            <td class="num">{{ s.out }}</td>
+            <td class="num"><strong>{{ s.on_hand }}</strong>{% if s.on_hand < 0 %} {{ pill("bad", "Below 0") }}{% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Nothing yet.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if rows %}<tfoot><tr><th>Total</th><td class="num">{{ total.made }}</td><td class="num wide-only">{{ "%+d" % total.adjusted if total.adjusted else 0 }}</td><td class="num">{{ total.out }}</td><td class="num">{{ total.on_hand }}</td></tr></tfoot>{% endif %}
+      </table>
+      </div>
+    </section>
 
-{% if role == "admin" %}
-<form method="post" action="/stock/adjust" class="card stack">
-  <h2>Adjust</h2>
-  <p class="muted small">Stock from before the records started (+), damaged or miscounted (−).</p>
-  <div class="row">
-    <label>Model <select name="model" required>{% for slug, m in models.items() %}<option value="{{ slug }}">{{ m.name }}</option>{% endfor %}</select></label>
-    <label>By <input type="number" name="qty" required inputmode="numeric" placeholder="+20 or -3"></label>
-    <label>Date <input type="date" name="date" value="{{ today }}" max="{{ today }}"></label>
+    {% if ledger %}
+    <section class="card flush">
+      <div class="card-head"><h2 class="card-title">Recent</h2></div>
+      <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th>What</th><th class="num">Qty</th></tr></thead>
+        <tbody>
+        {% for r in ledger %}
+          <tr><td class="nowrap">{{ r.date | fmt_date }}</td>
+            <td>{{ "Out" if r.kind == "out" else "Adjusted" }} · {{ r.model_name or "not linked" }}{% if r.demand_name %} · <a href="/demand/{{ r.demand_slug }}">{{ r.demand_name }}</a>{% endif %}
+              {% if r.notes or r.by %}<span class="sub">{{ r.notes }}{% if r.notes and r.by %} · {% endif %}{{ r.by }}</span>{% endif %}</td>
+            <td class="num">{{ ("−" if r.kind == "out" else ("+" if r.qty > 0 else "")) ~ r.qty }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+    {% endif %}
   </div>
-  <label>Why <input type="text" name="notes" required></label>
-  <div><button class="btn" type="submit">Adjust</button></div>
-</form>
-{% endif %}
 
-{% if ledger %}
-<section class="card">
-  <h2>Recent</h2>
-  <table class="grid">
-    <thead><tr><th>Date</th><th>What</th><th class="num">Qty</th></tr></thead>
-    <tbody>
-    {% for r in ledger %}
-      <tr><td>{{ r.date | fmt_date }}</td>
-        <td>{{ "Out" if r.kind == "out" else "Adjust" }} · {{ r.model_name or "unlinked" }}{% if r.demand_name %} · <a href="/demand/{{ r.demand_slug }}">{{ r.demand_name }}</a>{% endif %}
-          {% if r.notes %}<div class="muted small">{{ r.notes }}{% if r.by %} · {{ r.by }}{% endif %}</div>{% endif %}</td>
-        <td class="num">{{ ("-" if r.kind == "out" else ("+" if r.qty > 0 else "")) ~ r.qty }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
+  <div class="stack-lg">
+    {% if can(user, settings, "operator") %}
+    <form method="post" action="/stock/out" class="card stack">
+      <h2 class="card-title">{{ icon("truck") }} Record Out</h2>
+      <div class="form-grid">
+        {% call field("How many") %}<input type="number" name="qty" min="1" required inputmode="numeric">{% endcall %}
+        {% call field("Date") %}<input type="date" name="date" value="{{ today }}" max="{{ today }}">{% endcall %}
+        {% call field("Model", cls="full") %}
+          <select name="model"><option value="">A mixed box (split by what's on hand)</option>
+            {% for slug, m in models.items() %}<option value="{{ slug }}">{{ m.name }}</option>{% endfor %}</select>
+        {% endcall %}
+        {% call field("For", cls="full") %}
+          <select name="demand"><option value="">Nothing in particular</option>
+            {% for d in demands %}<option value="{{ d.slug }}">{{ d.name }} · {{ d.due | fmt_date }}</option>{% endfor %}</select>
+        {% endcall %}
+        {% call field("Notes", opt=true, cls="full") %}<input type="text" name="notes">{% endcall %}
+      </div>
+      <label class="check"><input type="checkbox" name="force" value="1">
+        <span>More than the records show<span class="help">Stock from before Platewright; the extra is booked as not linked.</span></span></label>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">{{ icon("check") }} Record Out</button></div>
+    </form>
+    {% endif %}
+
+    {% if role == "admin" %}
+    <section class="card">
+      <details class="disclosure">
+        <summary>{{ icon("pencil") }} Adjust Stock{{ icon("chevron-down", "chev") }}</summary>
+        <form method="post" action="/stock/adjust" class="stack">
+          <p class="help">Stock from before the records started (+), or damaged and miscounted (−).</p>
+          <div class="form-grid">
+            {% call field("Model", cls="full") %}
+              <select name="model" required><option value="">Choose a model…</option>{% for slug, m in models.items() %}<option value="{{ slug }}">{{ m.name }}</option>{% endfor %}</select>
+            {% endcall %}
+            {% call field("By") %}<input type="number" name="qty" required inputmode="numeric" placeholder="+20 or -3">{% endcall %}
+            {% call field("Date") %}<input type="date" name="date" value="{{ today }}" max="{{ today }}">{% endcall %}
+            {% call field("Why", cls="full") %}<input type="text" name="notes" required>{% endcall %}
+          </div>
+          <div class="form-actions"><button class="btn" type="submit">{{ icon("check") }} Adjust</button></div>
+        </form>
+      </details>
+    </section>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

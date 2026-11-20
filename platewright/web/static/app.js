@@ -101,12 +101,15 @@
   }
   function toasts() {
     document.querySelectorAll("[data-toast]").forEach(function (t) {
-      setTimeout(function () { dismiss(t); }, 4000);
+      // errors and warnings stay longer, as Bambuddy's do
+      var slow = t.classList.contains("bad") || t.classList.contains("warn");
+      setTimeout(function () { dismiss(t); }, slow ? 8000 : 4000);
     });
     try {
       var url = new URL(window.location.href);
       if (url.searchParams.has("notice")) {
         url.searchParams.delete("notice");
+        url.searchParams.delete("tone");
         window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
       }
     } catch (err) { /* old browser: the notice just stays in the address */ }

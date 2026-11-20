@@ -367,8 +367,8 @@ def test_filament_page(client, fake, store):
                    {"rgba": "00FF00FF", "material": "PETG", "brand": "Acme", "label_weight": 1000, "weight_used": 0}]
     sign_in(client, fake)
     page = client.get("/filament").text
-    assert "750 g" in page and "Spools not in the palette" in page and "Acme" in page
-    assert page.count("reorder") >= 1  # White: none on hand
+    assert "750 g" in page and "Spools Not in the Palette" in page and "Acme" in page
+    assert page.count("Reorder") >= 1  # White: none on hand
 
 
 def test_empty_pages_explain_themselves(client, fake):

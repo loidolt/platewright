@@ -46,7 +46,8 @@
   </footer>
   {% endif %}
   <div class="toasts" aria-live="polite">
-    {% if notice %}<div class="toast" role="status" data-toast>{{ icon("circle-check") }}<span>{{ notice }}</span>
+    {% if notice %}<div class="toast {{ notice_tone }}" {% if notice_tone == "bad" %}role="alert"{% else %}role="status"{% endif %} data-toast>
+      {{- icon({"bad": "circle-x", "warn": "circle-alert"}.get(notice_tone, "circle-check")) }}<span>{{ notice }}</span>
       <button type="button" data-dismiss aria-label="Close">{{ icon("x") }}</button></div>{% endif %}
   </div>
 </body>

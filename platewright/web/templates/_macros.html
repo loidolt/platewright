@@ -78,3 +78,11 @@
 {% macro thumb(file_id, cls="", ico="box") -%}
 <div class="thumb {{ cls }}">{% if file_id %}<img src="/thumb/{{ file_id }}" alt="" loading="lazy">{% else %}{{ icon(ico) }}{% endif %}</div>
 {%- endmacro %}
+
+{# Where a demand stands: covered by stock, on track, or at risk (late, no plate, or too few plate slots). #}
+{% macro demand_status(p) -%}
+{%- if not p.short -%}{{ pill("good", "Covered", "circle-check") }}
+{%- elif p.no_plate -%}{{ pill("bad", "No plate for some", "ban") }}
+{%- elif p.at_risk -%}{{ pill("bad", "At risk", "triangle-alert") }}
+{%- else -%}{{ pill("info", "On track", "clock") }}{%- endif -%}
+{%- endmacro %}

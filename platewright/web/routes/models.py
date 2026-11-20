@@ -169,7 +169,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         if store.model(slug):
-            return ctx.back(f"/models/{slug}", f"{name} is already registered")
+            return ctx.back(f"/models/{slug}", f"{name} is already registered", "warn")
         fields = await from_makerworld(form_fields(name, ref, url, designer, license, distribution_ok, min_age,
                                                    small_parts, parts_per_unit, bambuddy_file_id, notes))
         name = fields.pop("name")

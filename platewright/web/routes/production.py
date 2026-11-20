@@ -99,7 +99,7 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             alloc = allocate_out(qty, on_hand, model or None, force=bool(force))
         except NotEnough as exc:
             return ctx.back("/stock", f"Not recorded: {exc}. Add earlier stock with Adjust first, or tick "
-                                      "'more than the records show'.")
+                                      "'more than the records show'.", "bad")
         day = _day(date)
         note = notes.strip() if model else ("mixed; " + notes.strip()).rstrip("; ")
         for k, n in alloc.items():

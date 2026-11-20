@@ -1,69 +1,97 @@
 {% extends "base.html" %}
-{% from "_macros.html" import bb_link, model_name %}
+{% from "_macros.html" import bb_link, model_name, page_head, field, pill, demand_status %}
 {% block title %}{{ d.name }} · Platewright{% endblock %}
 {% block content %}
-<p><a href="/demand">← Demand</a></p>
-<div class="title-row">
-  <h1>{{ d.name }} <span class="pill">{{ d.kind }}</span>{% if d.status == "done" %} <span class="pill">done</span>{% endif %}</h1>
-  {% if role == "admin" %}<a class="btn" href="/demand/{{ d.slug }}/edit">Edit</a>{% endif %}
-</div>
-<p>Needed by {{ d.due | fmt_date }}{% if d.notes %} · {{ d.notes }}{% endif %}</p>
+{% set when %}Needed by {{ d.due | fmt_date }}{% if p %} · {% if p.days < 0 %}{{ -p.days }} days ago{% elif p.days == 0 %}today{% else %}in {{ p.days }} days{% endif %}{% endif %}{% if d.notes %} · {{ d.notes }}{% endif %}{% endset %}
+{% call page_head(d.name, "clipboard-list", when, back=("/demand", "Demand")) %}
+  {% if d.bambuddy_project_id %}{{ bb_link("/projects/" ~ d.bambuddy_project_id, "Project", "btn", "folder-kanban") }}{% endif %}
+  {% if role == "admin" %}<a class="btn" href="/demand/{{ d.slug }}/edit">{{ icon("pencil") }} Edit</a>{% endif %}
+{% endcall %}
 
 {% if p %}
-<section class="card">
-  <h2>Coverage</h2>
-  <progress value="{{ p.demand.total - p.short }}" max="{{ p.demand.total }}"></progress>
-  <dl class="facts">
-    <dt>Total</dt><dd>{{ p.demand.total }} {{ settings.unit() }}</dd>
-    <dt>Out so far</dt><dd>{{ p.delivered }}</dd>
-    <dt>From stock</dt><dd>{{ p.covered }}</dd>
-    <dt>Short</dt><dd>{% if p.short %}<strong>{{ p.short }}</strong> ≈ {{ p.plates }} plates (with earlier demand {{ p.cumulative_plates }}, vs {{ p.slots | round(1) }} slots){% else %}<span class="good">nothing</span>{% endif %}</dd>
-  </dl>
-  {% if needs %}
-  <table class="grid">
-    <thead><tr><th>Model</th><th class="num">Need</th><th class="num">Out</th><th class="num">Short</th><th>Plates</th></tr></thead>
-    <tbody>
-    {% for slug, n in needs.items() %}
-      {% set mp = p.plates_by_model.get(slug) %}
-      <tr><td>{{ model_name(slug, models) }}</td><td class="num">{{ n }}</td><td class="num">{{ delivered.get(slug, 0) }}</td>
-        <td class="num">{{ p.short_by_model.get(slug, 0) }}</td>
-        <td>{% if p.short_by_model.get(slug, 0) %}{% if mp %}≈ {{ mp[0] }} × plate {{ mp[1] }}{% else %}<span class="bad">no active plate</span>{% endif %}{% endif %}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-</section>
+<div class="stats">
+  <div class="stat"><div class="stat-label">{{ icon("box") }} Needed</div><div class="stat-value">{{ p.demand.total }}</div>
+    <div class="stat-note">{{ d.kind | capitalize }}{% if d.status == "done" %} · done{% endif %}</div></div>
+  <div class="stat"><div class="stat-label">{{ icon("truck") }} Out so far</div><div class="stat-value">{{ p.delivered }}</div></div>
+  <div class="stat"><div class="stat-label">{{ icon("package") }} From stock</div><div class="stat-value">{{ p.covered }}</div></div>
+  <div class="stat"><div class="stat-label">{{ icon("layout-grid") }} To print</div><div class="stat-value">{{ p.short }}</div>
+    <div class="stat-note">{% if p.short %}about {{ p.plates }} plate{{ "" if p.plates == 1 else "s" }}{% else %}covered{% endif %}</div></div>
+</div>
+{% elif d.status == "done" %}
+<div class="banner info">{{ icon("info") }}<p>Done: it no longer takes stock on hand or counts toward plates needed.</p></div>
 {% endif %}
 
-{% if role == "admin" and d.status == "open" %}
-<form method="post" action="/demand/{{ d.slug }}/queue" class="card stack">
-  <h2>Queue plates in Bambuddy</h2>
-  {% if plates %}
-  <div class="row">
-    <label>Plate <select name="plate">{% for pl in plates %}<option value="{{ pl.code }}" {% if suggest == pl.code %}selected{% endif %}>{{ pl.code }} · {{ pl.units }}-up{% if pl.description %} · {{ pl.description }}{% endif %}</option>{% endfor %}</select></label>
-    <label>Times <input type="number" name="times" min="1" max="50" value="{{ [p.plates, 50] | min if p and p.plates else 1 }}" inputmode="numeric"></label>
-    {% if printers | length > 1 %}<label>Printer <select name="printer">{% for k in printers %}<option>{{ k }}</option>{% endfor %}</select></label>{% endif %}
+<div class="cols">
+  <div class="stack-lg">
+    {% if p %}
+    <section class="card">
+      <div class="card-head"><h2 class="card-title">Coverage</h2>{{ demand_status(p) }}</div>
+      <progress class="{{ 'bad' if p.at_risk else '' }}" value="{{ p.demand.total - p.short }}" max="{{ p.demand.total }}"></progress>
+      {% if p.short %}
+      <p class="small secondary mt">Counting the demand due before it too, {{ p.cumulative_plates }} plate{{ "" if p.cumulative_plates == 1 else "s" }}
+        are needed against {{ p.slots | round(1) }} plate slots left before the date.</p>
+      {% endif %}
+      {% if needs %}
+      <div class="table-wrap mt">
+      <table class="table">
+        <thead><tr><th>Model</th><th class="num">Need</th><th class="num">Out</th><th class="num">To print</th><th>Plates</th></tr></thead>
+        <tbody>
+        {% for slug, n in needs.items() %}
+          {% set mp = p.plates_by_model.get(slug) %}
+          <tr><td>{{ model_name(slug, models) }}</td><td class="num">{{ n }}</td><td class="num">{{ delivered.get(slug, 0) }}</td>
+            <td class="num">{{ p.short_by_model.get(slug, 0) }}</td>
+            <td>{% if p.short_by_model.get(slug, 0) %}{% if mp %}about {{ mp[0] }} × plate {{ mp[1] }}{% else %}{{ pill("bad", "No active plate", "ban") }}{% endif %}{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if ledger %}
+    <section class="card">
+      <h2 class="card-title">Out for {{ d.name }}</h2>
+      <ul class="list">{% for r in ledger %}<li class="item"><span>{{ r.date | fmt_date }} · {{ r.model_name or "Not linked" }}</span><strong>{{ r.qty }}</strong></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
   </div>
-  <p class="muted small">Adds them to the Bambuddy project for {{ d.name }}{% if d.bambuddy_project_id %} ({{ bb_link("/projects/" ~ d.bambuddy_project_id, "project " ~ d.bambuddy_project_id) }}){% endif %}.
-    Each run waits for a manual start, so the bed gets cleared first, and asks for good / reject.</p>
-  <div><button class="btn btn-accent" type="submit">Queue</button></div>
-  {% else %}
-  <p class="muted">No active plates. <a href="/plates/new">Lock one first.</a></p>
-  {% endif %}
-</form>
-{% endif %}
 
-{% if ledger %}
-<section class="card">
-  <h2>Out for {{ d.name }}</h2>
-  <ul class="list">{% for r in ledger %}<li><span>{{ r.date | fmt_date }} · {{ r.model_name or "unlinked" }}</span><span>{{ r.qty }}</span></li>{% endfor %}</ul>
-</section>
-{% endif %}
+  <div class="stack-lg">
+    {% if role == "admin" and d.status == "open" %}
+    <form method="post" action="/demand/{{ d.slug }}/queue" class="card stack">
+      <h2 class="card-title">{{ icon("list-ordered") }} Queue Plates</h2>
+      {% if plates %}
+      <div class="form-grid">
+        {% call field("Plate", cls="full") %}
+          <select name="plate">{% for pl in plates %}<option value="{{ pl.code }}" {% if suggest == pl.code %}selected{% endif %}>Plate {{ pl.code }} · {{ pl.units }} each{% if pl.description %} · {{ pl.description }}{% endif %}</option>{% endfor %}</select>
+        {% endcall %}
+        {% call field("Times") %}
+          <input type="number" name="times" min="1" max="50" value="{{ [p.plates, 50] | min if p and p.plates else 1 }}" inputmode="numeric">
+        {% endcall %}
+        {% if printers | length > 1 %}
+        {% call field("Printer") %}<select name="printer">{% for k in printers %}<option>{{ k }}</option>{% endfor %}</select>{% endcall %}
+        {% endif %}
+      </div>
+      <p class="help">Adds them to Bambuddy's Print Queue under the project "{{ d.name }}". Each run waits for you to
+        clear the bed and press start, and asks for good / reject when it ends.</p>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">{{ icon("list-ordered") }} Add to Print Queue</button></div>
+      {% else %}
+      <p class="muted">No active plates. <a href="/plates/new">Lock one first.</a></p>
+      {% endif %}
+    </form>
+    {% endif %}
 
-{% if role == "admin" %}
-<form method="post" action="/demand/{{ d.slug }}/status" class="card">
-  {% if d.status == "open" %}<button class="btn" name="status" value="done" type="submit">It's over: mark done</button>
-  {% else %}<button class="btn" name="status" value="open" type="submit">Reopen</button>{% endif %}
-</form>
-{% endif %}
+    {% if role == "admin" %}
+    <form method="post" action="/demand/{{ d.slug }}/status" class="card stack">
+      {% if d.status == "open" %}
+      <p class="small secondary">When it's over, mark it done: it stops taking stock on hand and counting toward plates needed.</p>
+      <div><button class="btn" name="status" value="done" type="submit">{{ icon("check") }} Mark Done</button></div>
+      {% else %}
+      <div><button class="btn" name="status" value="open" type="submit">{{ icon("refresh-cw") }} Reopen</button></div>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

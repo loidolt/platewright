@@ -15,7 +15,7 @@
 <div class="cards">
 {% for m in models %}
 {% set s = stock.get(m.slug, {}) %}
-<a class="card tile" href="/models/{{ m.slug }}">
+<a class="card tile has-thumb" href="/models/{{ m.slug }}">
   {{ thumb(m.bambuddy_file_id) }}
   <div class="tile-title"><span>{{ m.name }}{% if m.ref %} <span class="muted">#{{ m.ref }}</span>{% endif %}</span></div>
   {{ model_badges(m) }}

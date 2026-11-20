@@ -313,7 +313,7 @@ def test_demand_coverage_and_queue(client, fake, store):
                                      "target": "20", "need_nunu": "10"})
     assert r.headers["location"].startswith("/demand/christmas-outreach")
     page = client.get("/demand/christmas-outreach").text
-    assert "short" in page.lower() and "≈ 3 × plate N" in page
+    assert "To print" in page and "about 3 × plate N" in page
     r = client.post("/demand/christmas-outreach/queue", data={"plate": "N", "times": "5"})
     assert "Queued+plate+N" in r.headers["location"]
     (q,) = fake.queue

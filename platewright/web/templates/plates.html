@@ -18,7 +18,7 @@
 {% endif %}
 
 {% macro plate_tile(p) %}
-<a class="card tile{% if not p.active %} retired{% endif %}" href="/plates/{{ p.code }}">
+<a class="card tile has-thumb{% if not p.active %} retired{% endif %}" href="/plates/{{ p.code }}">
   {{ thumb(p.bambuddy_file_id, "", "layout-grid") }}
   <div>
     <div class="tile-title"><span>Plate {{ p.code }} <span class="muted">v{{ p.version }}</span></span>
