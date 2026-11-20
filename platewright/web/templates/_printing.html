@@ -1,6 +1,6 @@
 {% from "_macros.html" import bb_link, pill %}
 {% if error and not printers %}
-<p class="bad">{{ icon("wifi-off") }} Bambuddy didn't answer: {{ error }}</p>
+<p class="bad">{{ icon("wifi-off") }} {{ error | sentence }}</p>
 {% elif not printers %}
 <p class="muted">No printers in Bambuddy.</p>
 {% else %}

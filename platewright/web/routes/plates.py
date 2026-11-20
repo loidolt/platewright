@@ -88,8 +88,8 @@ def register(app: FastAPI, ctx: Ctx, files: PlateFiles) -> None:
         _, problem = await files.lock(st, code, description=description.strip() or None, by=user["username"])
         p = store.plate(code)
         msg = f"Plate {code} v{p.version} locked"
-        msg += f", but not in Bambuddy yet: {problem}" if problem else " and in File Manager"
-        return ctx.back(f"/plates/{code}", msg)
+        msg += f", but not in File Manager yet: {problem}" if problem else " and in File Manager"
+        return ctx.back(f"/plates/{code}", msg, "warn" if problem else "")
 
     @app.get("/plates/{code}", response_class=HTMLResponse)
     async def plate_page(request: Request, code: str):

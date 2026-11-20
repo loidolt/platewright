@@ -419,3 +419,11 @@ def test_unknown_address_is_a_page_not_json(client, fake):
     assert r.status_code == 404 and "<html" in r.text and "no page at this address" in r.text
     r = client.get("/no-such-page", headers={"HX-Request": "true"})
     assert r.status_code == 404 and 'role="alert"' in r.text and "<html" not in r.text
+
+
+def test_notice_tone_shows_as_an_error_toast(client, fake):
+    sign_in(client, fake)
+    page = client.get("/?notice=Bambuddy+refused&tone=bad").text
+    assert 'class="toast bad"' in page and 'role="alert"' in page and "Bambuddy refused" in page
+    page = client.get("/?notice=Saved&tone=other").text
+    assert 'class="toast "' in page and 'role="status"' in page  # an unknown tone is a plain notice

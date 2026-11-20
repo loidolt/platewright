@@ -1,7 +1,7 @@
 {% if last_sync %}
 <dl class="facts">
   <dt>Last sync</dt>
-  <dd>{% if last_sync.error %}<span class="bad">{{ icon("circle-x") }} {{ last_sync.error }}</span>{% else %}<span class="good">{{ icon("circle-check") }} OK</span>{% endif %}
+  <dd>{% if last_sync.error %}<span class="bad">{{ icon("circle-x") }} {{ last_sync.error | sentence }}</span>{% else %}<span class="good">{{ icon("circle-check") }} OK</span>{% endif %}
     <span class="help">· {{ last_sync.at | fmt_when }}</span></dd>
   <dt>Runs</dt>
   <dd>{{ last_sync.new }} new, {{ last_sync.updated }} updated{% if last_sync.linked %}, {{ last_sync.linked }} linked{% endif %}{% if last_sync.printing %} · {{ last_sync.printing }} printing{% endif %}</dd>
@@ -14,7 +14,7 @@
   <dt>Check</dt><dd class="warn">{{ icon("circle-alert") }} {{ last_sync.by_name | length }} matched by file name only, not fingerprint</dd>
   {% endif %}
   <dt>Badge</dt>
-  <dd>{% if badge.error %}<span class="bad">{{ badge.error }}</span>{% elif badge.last_ok %}{{ badge.count }} reported{% else %}<span class="muted">Not yet</span>{% endif %}</dd>
+  <dd>{% if badge.error %}<span class="bad">{{ badge.error | sentence }}</span>{% elif badge.last_ok %}{{ badge.count }} reported{% else %}<span class="muted">Not yet</span>{% endif %}</dd>
 </dl>
 {% else %}
 <p class="muted">Not synced yet.</p>

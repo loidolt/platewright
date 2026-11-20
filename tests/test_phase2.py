@@ -236,7 +236,8 @@ def test_upload_failure_leaves_the_plate_locked(client, fake, store):
     fake.handler = no_library
     client.app.state.ctx.bambuddy._http._transport = httpx.MockTransport(no_library)
     r, _ = lock_via_web(client)
-    assert "not+in+Bambuddy+yet" in r.headers["location"] and "permission" in r.headers["location"]
+    assert "not+in+File+Manager+yet" in r.headers["location"] and "permission" in r.headers["location"]
+    assert r.headers["location"].endswith("&tone=warn")
     assert store.plate("N").bambuddy_file_id is None
     assert "Upload to File Manager" in client.get("/plates/N").text
 
