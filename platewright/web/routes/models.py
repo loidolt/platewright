@@ -22,6 +22,11 @@ def _clean_url(url: str) -> str:
     return url
 
 
+def is_makerworld(url: str) -> bool:
+    host = (urlsplit(url.strip()).hostname or "").lower()
+    return host == "makerworld.com" or host.endswith(".makerworld.com")
+
+
 def _int_or_none(text: str) -> int | None:
     return to_int(text)
 
@@ -60,6 +65,21 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             out.append({**f, "folder_name": names.get(f.get("folder_id"), "")})
         return sorted(out, key=lambda f: (f["folder_name"].lower(), (f.get("filename") or "").lower()))[:300], None
 
+    async def from_makerworld(fields: dict) -> dict:
+        """Fill a MakerWorld model's blank designer, license and source file from the model page,
+        through Bambuddy. What was typed is kept; if MakerWorld can't be asked, nothing changes."""
+        if not is_makerworld(fields["url"]) or (fields["designer"] and fields["license"] and fields["bambuddy_file_id"]):
+            return fields
+        try:
+            mw = await ctx.bambuddy.makerworld(fields["url"])
+        except BambuddyError:
+            return fields
+        fields["designer"] = fields["designer"] or mw["designer"]
+        fields["license"] = fields["license"] or mw["license"]
+        if fields["bambuddy_file_id"] is None and mw["file_ids"]:
+            fields["bambuddy_file_id"] = mw["file_ids"][0]
+        return fields
+
     def form_fields(name, ref, url, designer, license, distribution_ok, min_age, small_parts, parts_per_unit,
                     bambuddy_file_id, notes) -> dict:
         if distribution_ok not in ("yes", "no", "unknown") or small_parts not in ("yes", "no", "unknown"):
@@ -87,6 +107,31 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         files, error = await library_models()
         return ctx.page(request, "model_form.html", user=user, nav="models", model=None, files=files,
                         files_error=error)
+
+    @app.post("/makerworld/lookup", response_class=HTMLResponse)
+    async def makerworld_lookup(request: Request, url: str = Form(""), designer: str = Form(""),
+                                license: str = Form(""), bambuddy_file_id: str = Form("")):
+        """The model form asks this when the source link changes: a note under the link, and the
+        blank designer, license and source file filled in (out-of-band swaps)."""
+        user = ctx.require(request, "admin")
+        url = url.strip()
+        context = {"mw": None, "error": None, "designer": None, "license": None, "file_id": None, "files": []}
+        if url and is_makerworld(url) and urlsplit(url).scheme in ("http", "https"):
+            try:
+                mw = await ctx.bambuddy.makerworld(url)
+            except BambuddyError as exc:
+                context["error"] = str(exc)
+            else:
+                context["mw"] = mw
+                if not designer.strip() and mw["designer"]:
+                    context["designer"] = mw["designer"]
+                if not license.strip() and mw["license"]:
+                    context["license"] = mw["license"]
+                if not to_int(bambuddy_file_id) and mw["file_ids"]:
+                    files, _ = await library_models()
+                    if any(f["id"] == mw["file_ids"][0] for f in files):
+                        context.update(file_id=mw["file_ids"][0], files=files)
+        return ctx.page(request, "_makerworld.html", user=user, **context)
 
     @app.get("/models/{slug}", response_class=HTMLResponse)
     async def model_page(request: Request, slug: str):
@@ -122,8 +167,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             raise HTTPException(400, str(exc))
         if store.model(slug):
             return ctx.back(f"/models/{slug}", f"{name} is already registered")
-        fields = form_fields(name, ref, url, designer, license, distribution_ok, min_age, small_parts,
-                             parts_per_unit, bambuddy_file_id, notes)
+        fields = await from_makerworld(form_fields(name, ref, url, designer, license, distribution_ok, min_age,
+                                                   small_parts, parts_per_unit, bambuddy_file_id, notes))
         name = fields.pop("name")
         store.add_model(slug, name, by=user["username"], aliases=tuple(dict.fromkeys(a.strip() for a in aliases.splitlines() if a.strip())),
                         **fields)
@@ -138,8 +183,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         ctx.require(request, "admin")
         if store.model(slug) is None:
             raise HTTPException(404, "No such model")
-        fields = form_fields(name, ref, url, designer, license, distribution_ok, min_age, small_parts,
-                             parts_per_unit, bambuddy_file_id, notes)
+        fields = await from_makerworld(form_fields(name, ref, url, designer, license, distribution_ok, min_age,
+                                                   small_parts, parts_per_unit, bambuddy_file_id, notes))
         store.update_model(slug, aliases=aliases.splitlines(), **fields)
         return ctx.back(f"/models/{slug}", "Saved")
 

@@ -182,6 +182,17 @@ class Bambuddy:
         except ValueError:
             return None
 
+    async def makerworld(self, url: str) -> dict:
+        """What Bambuddy's MakerWorld resolver says about a model page: its title, designer and
+        license as MakerWorld states them, and the File Manager files already imported from it."""
+        res = await self.send("POST", "/makerworld/resolve", json={"url": url}, timeout=20) or {}
+        design = res.get("design") if isinstance(res.get("design"), dict) else {}
+        creator = design.get("designCreator") if isinstance(design.get("designCreator"), dict) else {}
+        return {"title": _text(design.get("title")),
+                "designer": _text(creator.get("name")) or _text(creator.get("handle")),
+                "license": _text(design.get("license")),
+                "file_ids": [i for i in res.get("already_imported_library_ids") or [] if isinstance(i, int)]}
+
     async def folder_id(self, name: str) -> int:
         """A top-level library folder by name, created if missing."""
         for f in await self.get("/library/folders") or []:
@@ -220,6 +231,10 @@ class BambuddyError(Exception):
     def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
+
+
+def _text(value) -> str:
+    return value.strip()[:200] if isinstance(value, str) else ""
 
 
 def _error_code(response: httpx.Response) -> str:

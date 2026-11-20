@@ -1,0 +1,13 @@
+{# The model form's fields the MakerWorld lookup can fill, shared with its out-of-band swaps. #}
+{% macro designer_input(value, oob=false) -%}
+<input type="text" name="designer" id="f-designer" value="{{ value or '' }}"{% if oob %} hx-swap-oob="true"{% endif %}>
+{%- endmacro %}
+{% macro license_input(value, oob=false) -%}
+<input type="text" name="license" id="f-license" placeholder="e.g. CC BY-NC 4.0" value="{{ value or '' }}"{% if oob %} hx-swap-oob="true"{% endif %}>
+{%- endmacro %}
+{% macro file_select(files, selected, oob=false) -%}
+<select name="bambuddy_file_id" id="f-file"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <option value="">none</option>
+  {% for f in files %}<option value="{{ f.id }}" {% if selected == f.id %}selected{% endif %}>{{ f.filename }}{% if f.folder_name %} · {{ f.folder_name }}{% endif %}</option>{% endfor %}
+</select>
+{%- endmacro %}

@@ -1,0 +1,8 @@
+{% from "_model_inputs.html" import designer_input, license_input, file_select %}
+{% if error %}<span class="bad">MakerWorld couldn't be asked: {{ error }}</span>
+{% elif mw %}<span>MakerWorld: {{ mw.title or "model" }}{% if mw.designer %} by {{ mw.designer }}{% endif %}{% if mw.license %} · {{ mw.license }}{% endif %}.
+  {%- if designer or license or file_id %} Filled in what was blank.{% endif %} Read the license on the model page before saying prints may be handed out.</span>
+{% endif %}
+{% if designer %}{{ designer_input(designer, oob=true) }}{% endif %}
+{% if license %}{{ license_input(license, oob=true) }}{% endif %}
+{% if file_id %}{{ file_select(files, file_id, oob=true) }}{% endif %}

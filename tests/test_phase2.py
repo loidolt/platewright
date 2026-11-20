@@ -23,6 +23,7 @@ class WritableBambuddy(FakeBambuddy):
         self.projects: dict[int, dict] = {}
         self.queue: list[dict] = []
         self.patches: list[tuple[int, dict]] = []
+        self.resolved: list[str] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path, method = request.url.path, request.method
@@ -72,6 +73,14 @@ class WritableBambuddy(FakeBambuddy):
                 return httpx.Response(404, json={"detail": "gone"})
             self.patches.append((pid, json.loads(request.content)))
             return httpx.Response(200, json={"id": pid})
+        if path == "/api/v1/makerworld/resolve" and method == "POST":
+            self.resolved.append(json.loads(request.content)["url"])
+            if "/models/404" in self.resolved[-1]:
+                return httpx.Response(404, json={"detail": "Model not found"})
+            return httpx.Response(200, json={
+                "model_id": "3626238", "profile_id": 4157658, "instances": [], "already_imported_library_ids": [50],
+                "design": {"title": "Zookis - Krin (green fox) #93", "license": "Standard Digital File License",
+                           "designCreator": {"uid": 1, "name": "enr", "handle": "enr.es"}}})
         if path == "/api/v1/queue/" and method == "POST":
             self.queue.append(json.loads(request.content))
             return httpx.Response(200, json={"id": 900 + len(self.queue)})
@@ -429,3 +438,42 @@ def test_source_file_list_walks_folders_like_bambuddy(client, fake, store):
     assert "Source file in File Manager" in page
     assert "#93 krin (green fox).3mf · MakerWorld / Krin" in page and "nunu.3mf · MakerWorld" in page
     assert "loose.stl" in page and "PLATE-N" not in page
+
+
+KRIN = "https://makerworld.com/en/models/3626238-zookis-krin-green-fox-93#profileId-4157658"
+
+
+def test_makerworld_link_fills_designer_license_and_file(client, fake, store):
+    sign_in(client, fake)
+    assert 'hx-post="/makerworld/lookup"' in client.get("/models/new").text
+    r = client.post("/makerworld/lookup", data={"url": KRIN, "designer": "", "license": "", "bambuddy_file_id": ""})
+    assert r.status_code == 200
+    assert "Zookis - Krin (green fox) #93 by enr · Standard Digital File License" in r.text
+    assert 'id="f-designer" value="enr" hx-swap-oob="true"' in r.text
+    assert 'value="Standard Digital File License" hx-swap-oob="true"' in r.text
+    assert 'id="f-file" hx-swap-oob="true"' in r.text and '<option value="50" selected>' in r.text
+    # what was typed or chosen stays
+    r = client.post("/makerworld/lookup", data={"url": KRIN, "designer": "Someone", "license": "", "bambuddy_file_id": "50"})
+    assert "f-designer" not in r.text and "f-license" in r.text and "f-file" not in r.text
+    # other sites and failures: no lookup, or a note
+    n = len(fake.resolved)
+    assert client.post("/makerworld/lookup", data={"url": "https://www.printables.com/model/1"}).text.strip() == ""
+    assert client.post("/makerworld/lookup", data={"url": "javascript://makerworld.com/x"}).text.strip() == ""
+    assert len(fake.resolved) == n
+    assert "couldn't be asked" in client.post("/makerworld/lookup", data={"url": "https://makerworld.com/en/models/404"}).text
+
+
+def test_saving_a_makerworld_model_fills_blanks(client, fake, store):
+    sign_in(client, fake)
+    client.post("/models", data={"name": "Krin", "ref": "93", "url": KRIN})
+    m = store.model("093-krin")
+    assert (m["designer"], m["license"], m["bambuddy_file_id"]) == ("enr", "Standard Digital File License", 50)
+    client.post("/models/093-krin", data={"name": "Krin", "url": KRIN, "designer": "ENR", "license": "Own words",
+                                          "bambuddy_file_id": "50"})
+    n = len(fake.resolved)
+    assert store.model("093-krin")["designer"] == "ENR" and store.model("093-krin")["license"] == "Own words"
+    client.post("/models/093-krin", data={"name": "Krin", "url": KRIN, "designer": "ENR", "license": "Own words",
+                                          "bambuddy_file_id": "50"})
+    assert len(fake.resolved) == n  # nothing blank: MakerWorld isn't asked
+    client.post("/models", data={"name": "Gone", "url": "https://makerworld.com/en/models/404"})
+    assert store.model("gone")["designer"] == ""  # MakerWorld unreachable: saved as typed
