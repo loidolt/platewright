@@ -1,32 +1,42 @@
-{% from "_macros.html" import bb_link, model_name, outcome %}
+{% from "_macros.html" import bb_link, model_name, outcome, field %}
 <div class="review" id="run-{{ run.id }}">
-  <div class="review-head">
-    <span><strong>Plate {{ run.plate_code }}</strong> v{{ run.version }} · {{ run.date | fmt_date }}
-      · <strong>{{ run.good }}</strong> / {{ run.planned }} good {{ outcome(run) }}</span>
-    {% if run.archive_id %}{{ bb_link("/archives/" ~ run.archive_id, "Bambuddy", "small") }}{% endif %}
+  <div class="item">
+    <div class="item-main">
+      <div class="item-title"><a href="/plates/{{ run.plate_code }}">Plate {{ run.plate_code }}</a> <span class="muted">v{{ run.version }}</span></div>
+      <div class="item-meta">
+        <span>{{ run.date | fmt_date }}</span>
+        {% if run.reviewed_at and not editing %}<span><strong class="good">{{ run.good }}</strong>&nbsp;of {{ run.planned }} good</span>
+        {% else %}<span>{{ run.planned }} {{ settings.unit(run.planned) }}</span>{% endif %}
+        {% if run.printer %}<span>{{ icon("printer") }} {{ run.printer }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="row">
+      {{ outcome(run) }}
+      {% if run.archive_id %}{{ bb_link("/archives/" ~ run.archive_id, "Archives", "btn btn-ghost btn-sm") }}{% endif %}
+    </div>
   </div>
   {% if run.reviewed_at and not editing %}
-    <p class="muted small">Reviewed{% if run.reviewed_by %} by {{ run.reviewed_by }}{% endif %}
+    <p class="help">{{ icon("check") }} Reviewed{% if run.reviewed_by %} by {{ run.reviewed_by }}{% endif %}
       {% if can(user, settings, "operator") %}· <button class="link" type="button" hx-get="/runs/{{ run.id }}/review"
         hx-target="#run-{{ run.id }}" hx-swap="outerHTML">Change</button>{% endif %}</p>
   {% elif can(user, settings, "operator") %}
-    {% if run.outcome == "ok" and not run.verdict %}<p class="muted small">No good / reject in Bambuddy yet; counted as printed fine.</p>{% endif %}
-    <div class="row">
+    {% if run.outcome == "ok" and not run.verdict %}<p class="help">No good / reject in Bambuddy yet; it counts as printed fine.</p>{% endif %}
+    <div class="review-actions">
       <form hx-post="/runs/{{ run.id }}/review" hx-target="#run-{{ run.id }}" hx-swap="outerHTML">
-        <button class="btn btn-accent" type="submit">All good</button>
+        <button class="btn btn-primary btn-sm" type="submit">{{ icon("check") }} All Good</button>
       </form>
-      <details class="bad-parts">
-        <summary class="btn">Bad {{ settings.unit() }}…</summary>
+      <details class="bad-parts"{% if editing and run.failures %} open{% endif %}>
+        <summary class="btn btn-sm">{{ icon("circle-x") }} Bad {{ settings.unit() | capitalize }}…</summary>
         <form class="stack" hx-post="/runs/{{ run.id }}/review" hx-target="#run-{{ run.id }}" hx-swap="outerHTML">
           {% for slug, n in run.planned_by_model.items() %}
-          <label class="inline">{{ model_name(slug, models) }} <span class="muted small">of {{ n }}</span>
+          <label class="count-row"><span>{{ model_name(slug, models) }} <span class="help">of {{ n }}</span></span>
             <input type="number" name="bad_{{ slug }}" min="0" max="{{ n }}" value="{{ run.failures.get(slug, 0) }}" inputmode="numeric"></label>
           {% endfor %}
           {% if run.planned_by_model | length > 1 %}
-          <label class="inline">Any model <span class="muted small">(not sure which)</span>
+          <label class="count-row"><span>Any model <span class="help">not sure which</span></span>
             <input type="number" name="bad_{{ ANY }}" min="0" max="{{ run.planned }}" value="{{ run.failures.get(ANY, 0) }}" inputmode="numeric"></label>
           {% endif %}
-          <button class="btn" type="submit">Save</button>
+          <div><button class="btn btn-sm" type="submit">{{ icon("check") }} Save</button></div>
         </form>
       </details>
     </div>

@@ -343,8 +343,9 @@ def test_today_page_and_badge(client, fake, store):
     assert r.status_code == 200 and "2 new" in r.text
     assert fake.badges[-1] == {"url": "https://plates.example.test", "count": 2}  # two runs to review
     page = client.get("/").text
-    assert "To review" in page and 'data-bambuddy-path="/archives/10"' in page and "No good / reject" in page
-    assert "<strong>8</strong> / 500 good toys" in page
+    assert "To Review" in page and 'data-bambuddy-path="/archives/10"' in page and "No good / reject" in page
+    assert "Good toys" in page and '8 <span class="of">of 500</span>' in page
+    assert "Mark All Good" in page  # two prints to review
     printing = client.get("/partials/printing").text
     assert "PLATE-N_4up" in printing and "42%" in printing and "2 h 5 min left" in printing
 
@@ -357,7 +358,7 @@ def test_plates_and_models_pages(client, fake, store):
     assert "Version 1" in client.get("/plates/n").text
     assert client.get("/plates/ZZ").status_code == 404
     models = client.get("/models").text
-    assert "Nunu" in models and "test print passed" in models and "may hand out" in models and "3+" in models
+    assert "Nunu" in models and "Test print passed" in models and "May hand out" in models and "Ages 3+" in models
 
 
 def test_filament_page(client, fake, store):
@@ -409,3 +410,11 @@ def test_static_urls_are_versioned(client, fake):
     assert '/static/app.css?v=' in page and '/static/app.js?v=' in page
     href = page.split('/static/app.css?v=')[1].split('"')[0]
     assert len(href) == 10 and client.get(f"/static/app.css?v={href}").status_code == 200
+
+
+def test_unknown_address_is_a_page_not_json(client, fake):
+    sign_in(client, fake)
+    r = client.get("/no-such-page")
+    assert r.status_code == 404 and "<html" in r.text and "no page at this address" in r.text
+    r = client.get("/no-such-page", headers={"HX-Request": "true"})
+    assert r.status_code == 404 and 'role="alert"' in r.text and "<html" not in r.text

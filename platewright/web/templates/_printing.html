@@ -1,26 +1,33 @@
-{% from "_macros.html" import bb_link %}
+{% from "_macros.html" import bb_link, pill %}
 {% if error and not printers %}
-<p class="bad">{{ error }}</p>
+<p class="bad">{{ icon("wifi-off") }} Bambuddy didn't answer: {{ error }}</p>
 {% elif not printers %}
 <p class="muted">No printers in Bambuddy.</p>
 {% else %}
+{% if error %}<p class="help warn">{{ icon("wifi-off") }} Bambuddy didn't answer just now; this is what it said last.</p>{% endif %}
 <ul class="list">
   {% for p in printers %}
+  {% set busy = p.state in ("RUNNING", "PREPARE", "SLICING") %}
   <li>
-    <span>
-      <strong>{{ p.name }}</strong> ·
-      {% if not p.connected %}<span class="bad">offline</span>
-      {% elif p.state in ("RUNNING", "PREPARE", "SLICING") %}
-        {{ p.subtask_name or p.current_print or "printing" }} · {{ (p.progress or 0) | round | int }}%
-        {% if p.remaining_time %}· {{ p.remaining_time // 60 }} h {{ p.remaining_time % 60 }} min left{% endif %}
-      {% elif p.state == "PAUSE" %}<span class="warn">paused</span> · {{ p.subtask_name or "" }}
-      {% elif p.state == "FINISH" %}finished · {{ p.subtask_name or "" }}
-      {% elif p.state == "FAILED" %}<span class="bad">failed</span> · {{ p.subtask_name or "" }}
-      {% else %}<span class="muted">idle</span>{% endif %}
-    </span>
-    {% if p.state in ("RUNNING", "PREPARE", "SLICING") %}<progress value="{{ p.progress or 0 }}" max="100"></progress>{% endif %}
+    <div class="item">
+      <div class="item-main">
+        <div class="item-title">{{ p.name }}</div>
+        {% if p.connected and (busy or p.state in ("PAUSE", "FINISH", "FAILED")) and (p.subtask_name or p.current_print) %}
+        <div class="item-meta"><span>{{ p.subtask_name or p.current_print }}</span>
+          {% if busy %}<span>{{ (p.progress or 0) | round | int }}%</span>
+          {% if p.remaining_time %}<span>{{ p.remaining_time // 60 }} h {{ p.remaining_time % 60 }} min left</span>{% endif %}{% endif %}</div>
+        {% endif %}
+      </div>
+      {% if not p.connected %}{{ pill("bad", "Offline", "wifi-off") }}
+      {% elif busy %}{{ pill("info", "Printing", "play") }}
+      {% elif p.state == "PAUSE" %}{{ pill("warn", "Paused", "pause") }}
+      {% elif p.state == "FINISH" %}{{ pill("good", "Finished", "circle-check") }}
+      {% elif p.state == "FAILED" %}{{ pill("bad", "Failed", "circle-x") }}
+      {% else %}{{ pill("", "Idle") }}{% endif %}
+    </div>
+    {% if p.connected and busy %}<progress value="{{ p.progress or 0 }}" max="100"></progress>{% endif %}
   </li>
   {% endfor %}
 </ul>
-<p>{{ bb_link("/queue", "Open the queue in Bambuddy", "btn small") }}</p>
+<p class="mt">{{ bb_link("/", "Printers", "btn btn-sm", "printer") }}</p>
 {% endif %}

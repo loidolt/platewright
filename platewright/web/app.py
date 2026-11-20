@@ -25,6 +25,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from platewright import config
 from platewright.bambuddy.badge import BadgeReporter
@@ -38,6 +39,7 @@ from platewright.messages import Messenger
 from platewright.plates import PlateFiles
 from platewright.store.db import Store
 from platewright.web.context import Ctx, LoginRequired, can, safe_next
+from platewright.web.icons import icon
 from platewright.web.routes import admin, demand, hooks, models, plates, production
 from platewright.web.session import Sessions
 
@@ -78,6 +80,27 @@ class Cached:
         return self._value, self._error
 
 
+def fmt_month(month: str) -> str:
+    """'2026-11' as 'November 2026'."""
+    try:
+        return dt.date.fromisoformat(f"{month[:7]}-01").strftime("%B %Y")
+    except (TypeError, ValueError):
+        return month or ""
+
+
+def fmt_when(stamp: str | None) -> str:
+    """A stored UTC timestamp in this machine's local time: '14:02' today, else 'Nov 19, 14:02'."""
+    if not stamp:
+        return ""
+    try:
+        at = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return stamp
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=dt.timezone.utc)
+    at = at.astimezone()
+    return at.strftime("%H:%M") if at.date() == dt.date.today() else at.strftime("%b %-d, %H:%M")
+
 def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTransport | None = None,
                store: Store | None = None) -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
@@ -96,10 +119,12 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     # Static URLs carry a hash of the file, so a deploy never meets a stale cached copy.
     versions = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:10]
                 for f in (HERE / "static").iterdir() if f.is_file()}
-    templates.env.globals.update(config=cfg, UNLINKED=UNLINKED, ANY=ANY, can=can,
+    templates.env.globals.update(config=cfg, UNLINKED=UNLINKED, ANY=ANY, can=can, icon=icon,
                                  static=lambda name: f"/static/{name}?v={versions.get(name, '0')}")
     templates.env.filters["norm_hex"] = norm_hex
     templates.env.filters["fmt_date"] = lambda d: dt.date.fromisoformat(d[:10]).strftime("%b %-d") if d else ""
+    templates.env.filters["fmt_month"] = fmt_month
+    templates.env.filters["fmt_when"] = fmt_when
 
     def demand_risk(today: dt.date) -> list:
         settings = store.settings()
@@ -182,13 +207,19 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
         # consent Bambuddy answers without a prompt.
         return RedirectResponse(f"/auth/login?next={quote(next_path, safe='/')}", status_code=303)
 
-    @app.exception_handler(HTTPException)
-    async def http_error(request: Request, exc: HTTPException):
-        """Errors as a page inside the frame (or a short fragment for htmx), not bare JSON."""
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException):
+        """Errors as a page inside the frame (or a short fragment for htmx), not bare JSON. This also
+        catches Starlette's own 404 and 405 for addresses no route has."""
+        message = str(exc.detail)
+        if exc.status_code == 404 and message == "Not Found":
+            message = "There's no page at this address."
+        elif exc.status_code == 405:
+            message = "This address can't be used that way."
         if request.headers.get("HX-Request"):
-            return page(request, "_error.html", exc.status_code, message=str(exc.detail))
-        return page(request, "message.html", exc.status_code, title="Can't do that", message=str(exc.detail),
-                    back=True)
+            return page(request, "_error.html", exc.status_code, message=message)
+        title = "Not found" if exc.status_code == 404 else "Can't do that"
+        return page(request, "message.html", exc.status_code, title=title, message=message, back=True)
 
     # -- Today ------------------------------------------------------------------------------
 

@@ -60,6 +60,17 @@ def register(app: FastAPI, ctx: Ctx) -> None:
             return ctx.page(request, "_review.html", user=user, run=run, models=ctx.models_by_slug(), editing=False)
         return ctx.back("/", f"Plate {run.plate_code}: {run.good} good")
 
+    @app.post("/runs/review-all")
+    async def review_all(request: Request, ids: str = Form("")):
+        """"Mark all good" on Today: the prints that were on the page, so a print that finished
+        meanwhile isn't confirmed unseen. Prints someone already reviewed keep their review."""
+        user = ctx.require(request, "operator")
+        wanted = {to_int(i) for i in ids.split(",")} - {None}
+        runs = [r for r in store.to_review() if r.id in wanted]
+        for r in runs:
+            store.review_run(r.id, {}, user["username"])
+        return ctx.back("/", f"{len(runs)} print{'' if len(runs) == 1 else 's'} marked all good")
+
     # -- stock ----------------------------------------------------------------------------------
 
     @app.get("/stock", response_class=HTMLResponse)
