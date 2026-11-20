@@ -72,12 +72,12 @@ class Cached:
 
     def __init__(self, ttl: float):
         self.ttl = ttl
-        self._at = 0.0
+        self._at: float | None = None  # not 0: monotonic() can be below ttl right after boot
         self._value = None
         self._error: str | None = None
 
     async def get(self, fetch):
-        if time.monotonic() - self._at > self.ttl:
+        if self._at is None or time.monotonic() - self._at > self.ttl:
             try:
                 self._value, self._error = await fetch(), None
             except BambuddyError as exc:

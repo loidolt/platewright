@@ -388,3 +388,14 @@ def test_settings_seed_only_into_empty_table(tmp_path):
     assert store.seed_settings({"unit_name": "toy"})
     assert not store.seed_settings({"unit_name": "part"})
     assert store.settings().unit_name == "toy"
+
+
+def test_cache_fetches_first_time_even_right_after_boot(monkeypatch):
+    from platewright.web import app as web
+
+    monkeypatch.setattr(web.time, "monotonic", lambda: 5.0)  # a host that booted 5 s ago
+    cache = web.Cached(60)
+
+    async def fetch():
+        return ["spool"]
+    assert asyncio.run(cache.get(fetch)) == (["spool"], None)
