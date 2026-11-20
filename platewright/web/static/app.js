@@ -165,6 +165,14 @@
     });
   });
 
+  // Settings › Palette: the swatch follows the hex as it's typed.
+  document.addEventListener("input", function (e) {
+    if (!e.target.matches || !e.target.matches("input[name=color_hex]")) return;
+    var swatch = e.target.closest("tr") && e.target.closest("tr").querySelector(".swatch");
+    var hex = e.target.value.trim();
+    if (swatch && /^#?[0-9a-fA-F]{6}$/.test(hex)) swatch.style.backgroundColor = hex.charAt(0) === "#" ? hex : "#" + hex;
+  });
+
   document.addEventListener("DOMContentLoaded", function () { paint(); toasts(); });
   document.addEventListener("htmx:afterSwap", function (e) { paint(e.target); });
 })();

@@ -641,7 +641,8 @@ details > summary::-webkit-details-marker { display: none; }
 @media (max-width: 767px) {
   .edit-table thead { display: none; }
   .edit-table, .edit-table tbody { display: block; }
-  .edit-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; padding: 0.75rem 0; border-top: 1px solid var(--bg-tertiary); }
+  .edit-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; padding: 0.75rem 0; border-top: 1px solid var(--bg-tertiary); }
+  .edit-table td.span2 { grid-column: span 2; }
   .edit-table tr:first-child { border-top: 0; padding-top: 0; }
   .edit-table td { display: flex; flex-direction: column; gap: 0.2rem; padding: 0; }
   .edit-table td::before { content: attr(data-label); font-size: 0.75rem; font-weight: 500; color: var(--text-muted); }
