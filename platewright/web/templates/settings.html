@@ -104,7 +104,7 @@
 
       <h3 class="small secondary mt">Messages</h3>
       {% if messages_state %}
-      <p>{% if messages_state.error %}<span class="bad">{{ icon("circle-x") }} {{ messages_state.error }}</span>{% else %}<span class="good">{{ icon("circle-check") }} Delivered</span>{% endif %}
+      <p>{% if messages_state.error %}<span class="bad">{{ icon("circle-x") }} {{ messages_state.error | sentence }}</span>{% else %}<span class="good">{{ icon("circle-check") }} Delivered</span>{% endif %}
         {% if messages_state.last_at %}<span class="help">· last "{{ messages_state.last_title }}" at {{ messages_state.last_at | fmt_when }} to {{ messages_state.channels }} channel{{ "" if messages_state.channels == 1 else "s" }}</span>{% endif %}</p>
       {% else %}<p class="muted">None sent yet.</p>{% endif %}
       <form method="post" action="/settings/test-message"><button class="btn btn-sm" type="submit">{{ icon("send") }} Send a Test Message</button></form>

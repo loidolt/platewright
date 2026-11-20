@@ -19,11 +19,12 @@ theme, and links back to Bambuddy's own pages. It uses only the integration poin
 documents for sidebar apps ([external links](https://wiki.bambuddy.cool/features/external-links/),
 [connected apps](https://wiki.bambuddy.cool/features/connected-apps/)) and its REST API.
 
-**Status: phase 3**, written against Bambuddy v1.3.1.
+**Status: phase 3**, written against Bambuddy v1.3.1, whose look it follows (its components, theme
+and lucide icons).
 
-- **Today:** good parts this month against the target and the pace needed, what each printer is
-  doing, the finished prints **to review** (confirm all good, or count bad parts per model), demand,
-  recent runs and the last sync.
+- **Today:** the finished prints **to review** first (confirm all good, one by one or all at once, or
+  count bad parts per model), then good parts this month against the target and the plates still
+  needed, what each printer is doing, demand and recent runs.
 - **Demand:** orders, events and restock targets with coverage (stock on hand goes to the earliest
   first), plates needed against plate slots, and **Queue N plates**: one Bambuddy project per demand,
   queue items that wait for a manual start and ask for the good / reject verdict.
@@ -130,19 +131,22 @@ uv run pytest
 
 Try it locally against a stand-in Bambuddy. `dev/fake_bambuddy.py` imitates only what Platewright
 uses: the framing page, theme and navigate messages, an already-granted sign-in, the token exchange,
-the badge, and sample print log, archives, spools and printer status.
+the badge, and sample print log, archives, spools, printers, File Manager, MakerWorld, projects and
+queue (nothing prints). Its sidebar switches the theme (mode, style, background, accent) and who is
+signed in (admin, operator, viewer).
 
-1. Seed a dev database (`./data`) with sample settings, two models and a plate. It prints the
-   plate's fingerprint:
+1. Seed a dev database (`./data`) with sample settings, models, plates, runs, demand and stock. It
+   also writes `data/fake_bambuddy.json` (the plates' fingerprints, so the stand-in's prints match
+   them) and sample sliced files in `data/samples/` to try New Plate with:
 
    ```bash
    PLATEWRIGHT_DEV=1 uv run python -m dev.seed_dev
    ```
 
-2. Start the stand-in with that fingerprint, so its sample prints match the plate:
+2. Start the stand-in:
 
    ```bash
-   FAKE_PLATE_SHA=<fingerprint> uv run uvicorn dev.fake_bambuddy:app --port 3700
+   uv run uvicorn dev.fake_bambuddy:app --port 3700
    ```
 
 3. Start Platewright:
