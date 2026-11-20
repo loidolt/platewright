@@ -39,8 +39,23 @@ def _safe_next(value: str | None) -> str:
     return value
 
 
+class RedactCallbackQuery(logging.Filter):
+    """Keep the sign-in code and state out of the access log. uvicorn logs
+    (client, method, path?query, http version, status)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str) \
+                and args[2].startswith("/auth/callback?"):
+            record.args = (*args[:2], "/auth/callback?…", *args[3:])
+        return True
+
+
 def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
+    access_log = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, RedactCallbackQuery) for f in access_log.filters):
+        access_log.addFilter(RedactCallbackQuery())
     settings = settings or config.load()
     bambuddy = Bambuddy(settings, transport=transport)
     badge = BadgeReporter(bambuddy, count=settings.badge_count, interval=settings.badge_interval)
