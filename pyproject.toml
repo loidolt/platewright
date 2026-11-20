@@ -1,6 +1,6 @@
 [project]
 name = "platewright"
-version = "0.0.1"
+version = "0.1.0"
 description = "Platewright: repeatable, reliable print plates, as an app in Bambuddy's sidebar"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -11,6 +11,9 @@ dependencies = [
     "itsdangerous>=2.2,<3",
     "python-multipart>=0.0.18",
 ]
+
+[project.scripts]
+platewright = "platewright.cli:main"
 
 [dependency-groups]
 dev = [

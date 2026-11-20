@@ -120,6 +120,54 @@ class Bambuddy:
         response.raise_for_status()
         return int(response.json().get("links", 0))
 
+    # -- reads with the API key (Read status) ----------------------------------------------
+
+    async def get(self, path: str, **params):
+        """GET an API path with the key. Raises BambuddyError on any failure."""
+        try:
+            response = await self._http.get(path, params={k: v for k, v in params.items() if v is not None},
+                                            headers={"X-API-Key": self.settings.bambuddy_key})
+        except httpx.HTTPError as exc:
+            raise BambuddyError(f"Bambuddy unreachable: {type(exc).__name__}") from exc
+        if response.status_code != 200:
+            raise BambuddyError(f"GET {path}: HTTP {response.status_code} {_error_code(response)}",
+                                response.status_code)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise BambuddyError(f"GET {path}: not JSON") from exc
+
+    async def print_log(self, since: str | None) -> list[dict]:
+        """Every print-log entry since a date (YYYY-MM-DD), oldest first."""
+        out: list[dict] = []
+        offset = 0
+        while True:
+            page = await self.get("/print-log/", limit=200, offset=offset, sort_dir="asc",
+                                  date_from=f"{since}T00:00:00" if since else None) or {}
+            items = page.get("items") or []
+            out += items
+            offset += len(items)
+            if not items or offset >= int(page.get("total") or 0):
+                return sorted(out, key=lambda e: (e.get("started_at") or e.get("created_at") or "", e["id"]))
+
+    async def archive(self, archive_id: int) -> dict:
+        return await self.get(f"/archives/{archive_id}") or {}
+
+    async def spools(self) -> list[dict]:
+        return await self.get("/inventory/spools") or []
+
+    async def printers(self) -> list[dict]:
+        return await self.get("/printers/") or []
+
+    async def printer_status(self, printer_id: int) -> dict:
+        return await self.get(f"/printers/{printer_id}/status") or {}
+
+
+class BambuddyError(Exception):
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        self.status = status
+
 
 def _error_code(response: httpx.Response) -> str:
     # FastAPI wraps HTTPException details: {"detail": {"error": "..."}} or

@@ -1,14 +1,15 @@
 """Report the To do count on Platewright's sidebar link, every few minutes.
 
-Bambuddy hides a count it hasn't heard about for 10 minutes, so the report
-has to keep coming; the default interval is 5 minutes. In phase 0 the count
-is a stand-in number an admin can change from the hello page.
+Bambuddy hides a count it hasn't heard about for 10 minutes, so the report has to keep
+coming: the sync loop reports it after every pass (default every 5 minutes). The count is
+what needs someone: finished production prints with no good / reject verdict in Bambuddy yet,
+plus open demands at risk.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -29,11 +30,10 @@ class BadgeState:
 
 
 class BadgeReporter:
-    def __init__(self, bambuddy: Bambuddy, count: int, interval: int):
+    def __init__(self, bambuddy: Bambuddy, count: Callable[[], int]):
         self.bambuddy = bambuddy
-        self.interval = interval
-        self.state = BadgeState(count=count)
-        self._task: asyncio.Task | None = None
+        self.count = count
+        self.state = BadgeState(count=0)
 
     @property
     def configured(self) -> bool:
@@ -45,6 +45,10 @@ class BadgeReporter:
             return
         self.state.last_attempt = datetime.now(timezone.utc)
         try:
+            self.state.count = self.count()
+        except Exception:  # a broken count must not stop the report
+            logger.exception("Badge count failed")
+        try:
             self.state.links = await self.bambuddy.set_badge(self.state.count)
         except httpx.HTTPStatusError as exc:
             self.state.error = _explain(exc.response)
@@ -55,26 +59,6 @@ class BadgeReporter:
         else:
             self.state.error = None
             self.state.last_ok = self.state.last_attempt
-
-    def set_count(self, count: int) -> None:
-        # The caller reports right away; the loop keeps repeating it.
-        self.state.count = count
-
-    async def _run(self) -> None:
-        while True:
-            await self.report()
-            await asyncio.sleep(self.interval)
-
-    def start(self) -> None:
-        self._task = asyncio.create_task(self._run(), name="badge-reporter")
-
-    async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
 
 
 def _explain(response: httpx.Response) -> str:

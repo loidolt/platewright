@@ -14,6 +14,7 @@ Then open http://localhost:3700.
 """
 
 import base64
+import os
 import hashlib
 import secrets
 import time
@@ -115,3 +116,62 @@ def set_badge(body: dict = Body(...), x_api_key: str = Header("")):
 def links(request: Request):
     fresh = time.time() - badge["at"] < 600
     return [{"id": 1, "name": "Platewright", "url": APP_URL, "badge_count": badge["count"] if fresh else None}]
+
+
+# -- reads Platewright makes with the API key (sample data) ----------------------------------
+
+def _key(x_api_key: str) -> None:
+    if x_api_key != API_KEY:
+        raise HTTPException(401)
+
+
+SAMPLE_SHA = os.environ.get("FAKE_PLATE_SHA", "")  # dev/seed_dev.py prints it
+TODAY = time.strftime("%Y-%m-%d")
+PRINT_LOG = [
+    {"id": 101, "archive_id": 1, "print_name": "PLATE-N_44up", "printer_name": "X1C", "status": "completed",
+     "completed_at": f"{TODAY}T12:00:00Z", "duration_seconds": 82800, "user_verdict": "good"},
+    {"id": 102, "archive_id": 2, "print_name": "PLATE-N_44up", "printer_name": "X1C", "status": "completed",
+     "completed_at": f"{TODAY}T13:00:00Z", "duration_seconds": 82800, "user_verdict": None},
+    {"id": 103, "archive_id": 3, "print_name": "Benchy", "printer_name": "X1C", "status": "completed",
+     "completed_at": f"{TODAY}T14:00:00Z", "duration_seconds": 3600},
+]
+
+
+@app.get("/api/v1/print-log/")
+def print_log(x_api_key: str = Header("")):
+    _key(x_api_key)
+    return {"items": PRINT_LOG, "total": len(PRINT_LOG)}
+
+
+@app.get("/api/v1/archives/{archive_id}")
+def archive(archive_id: int, x_api_key: str = Header("")):
+    _key(x_api_key)
+    if archive_id == 3:
+        return {"id": 3, "filename": "Benchy.gcode.3mf", "content_hash": "benchy"}
+    return {"id": archive_id, "filename": "PLATE-N_44up.gcode.3mf", "content_hash": SAMPLE_SHA}
+
+
+@app.get("/api/v1/inventory/spools")
+def spools(x_api_key: str = Header("")):
+    _key(x_api_key)
+    return [
+        {"id": 1, "material": "PLA", "rgba": "9D432CFF", "brand": "Bambu", "color_name": "Brown",
+         "label_weight": 1000, "weight_used": 380},
+        {"id": 2, "material": "PLA", "rgba": "FFFFFFFF", "brand": "Bambu", "color_name": "White",
+         "label_weight": 1000, "weight_used": 900},
+        {"id": 3, "material": "PETG", "rgba": "2E7D32FF", "brand": "Elegoo", "color_name": "Green",
+         "label_weight": 1000, "weight_used": 120},
+    ]
+
+
+@app.get("/api/v1/printers/")
+def printers(x_api_key: str = Header("")):
+    _key(x_api_key)
+    return [{"id": 1, "name": "X1C"}]
+
+
+@app.get("/api/v1/printers/{printer_id}/status")
+def printer_status(printer_id: int, x_api_key: str = Header("")):
+    _key(x_api_key)
+    return {"connected": True, "state": "RUNNING", "subtask_name": "PLATE-N_44up", "progress": 63.0,
+            "remaining_time": 512}

@@ -1,0 +1,20 @@
+{% macro bb_link(path, label, cls="") -%}
+<a class="{{ cls }}" href="{{ config.bambuddy_url }}{{ path }}" target="_blank" rel="noopener" data-bambuddy-path="{{ path }}">{{ label }}</a>
+{%- endmacro %}
+
+{% macro model_name(slug, models) -%}
+{%- if slug == UNLINKED -%}<span class="muted">(not linked)</span>
+{%- elif slug in models -%}{{ models[slug].name }}
+{%- else -%}{{ slug }}{%- endif -%}
+{%- endmacro %}
+
+{% macro mix(m, models) -%}
+{%- for slug, n in m.items() -%}{{ model_name(slug, models) }} ×{{ n }}{% if not loop.last %}, {% endif %}{%- endfor -%}
+{%- endmacro %}
+
+{% macro outcome(run) -%}
+{%- if run.outcome == "ok" and run.verdict == "good" -%}<span class="pill good">good</span>
+{%- elif run.outcome == "ok" -%}<span class="pill warn">no verdict</span>
+{%- elif run.outcome == "rejected" -%}<span class="pill bad">rejected</span>
+{%- else -%}<span class="pill bad">{{ run.outcome }}</span>{%- endif -%}
+{%- endmacro %}

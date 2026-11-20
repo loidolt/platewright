@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bb_link %}
+{% block title %}Filament · Platewright{% endblock %}
+{% block content %}
+<h1>Filament</h1>
+{% if error %}<section class="card notice"><p class="bad">Bambuddy's inventory couldn't be read: {{ error }}</p></section>{% endif %}
+
+<section class="card">
+  <h2>Palette</h2>
+  {% if not rows %}
+  <p class="muted">No palette set up.</p>
+  {% else %}
+  <table class="grid">
+    <thead><tr><th>Color</th><th class="num">On hand</th><th class="num wide-only">Use / day</th><th class="num">Days left</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set days = r.days_left() %}
+      <tr>
+        <td><span class="swatch" data-hex="{{ r.hex | norm_hex }}"></span>{{ r.color }}
+          <div class="muted small">{{ r.material }}{% if r.slot %} · slot {{ r.slot }}{% endif %}</div></td>
+        <td class="num">{% if loaded %}{{ r.grams | int }} g{% else %}?{% endif %}</td>
+        <td class="num wide-only">{{ r.per_day }} g</td>
+        <td class="num wrap">
+          {% if days is not none %}~{{ [days, 0] | max | round | int }}{% else %}<span class="muted">no use</span>{% endif %}
+          {% if loaded and r.reorder(settings.reorder_days) %}<div><span class="pill bad">reorder</span></div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">On hand is Bambuddy's spool inventory; use per day is the last 30 days of production runs.
+    Reorder when fewer than {{ settings.reorder_days | int }} days are left, or none is on hand.</p>
+  {% endif %}
+  <p>{{ bb_link("/inventory", "Open the inventory in Bambuddy", "btn small") }}</p>
+</section>
+
+{% if other %}
+<section class="card">
+  <h2>Spools not in the palette</h2>
+  <ul class="list">
+    {% for s in other %}
+    <li><span><span class="swatch" data-hex="#{{ (s.rgba or '')[:6] }}"></span>{{ s.brand or "" }} {{ s.material or "" }} {{ s.color_name or "" }}
+      <span class="muted small">#{{ (s.rgba or '')[:6] }}</span></span><span>{{ s.grams_left | int }} g</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

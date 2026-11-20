@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Models · Platewright{% endblock %}
+{% block content %}
+<h1>Models</h1>
+{% if not models %}
+<section class="card">
+  <p>No models registered yet.</p>
+  <p class="muted">A model carries its license and distribution terms, safety labels and the names the slicer
+    gives it, and must pass a test print before it may go on a production plate. Adding models arrives in the next phase.</p>
+</section>
+{% endif %}
+{% for m in models %}
+{% set s = stock.get(m.slug, {}) %}
+<section class="card">
+  <h2>{{ m.name }} {% if m.ref %}<span class="muted">#{{ m.ref }}</span>{% endif %}</h2>
+  <p class="pills">
+    {% if m.status == "qualified" %}<span class="pill good">test print passed</span>
+    {% elif m.status == "failed-test" %}<span class="pill bad">test print failed</span>
+    {% else %}<span class="pill warn">not test-printed</span>{% endif %}
+    {% if m.distribution_ok == "yes" %}<span class="pill good">may hand out</span>
+    {% elif m.distribution_ok == "no" %}<span class="pill bad">may not hand out</span>
+    {% else %}<span class="pill warn">license unchecked</span>{% endif %}
+    {% if m.min_age is not none %}<span class="pill">{{ m.min_age }}+</span>{% endif %}
+    {% if m.small_parts == "yes" %}<span class="pill warn">small parts</span>{% endif %}
+  </p>
+  <dl class="facts">
+    {% if m.designer %}<dt>Designer</dt><dd>{{ m.designer }}</dd>{% endif %}
+    {% if m.license %}<dt>License</dt><dd>{{ m.license }}</dd>{% endif %}
+    {% if m.url %}<dt>Source</dt><dd><a href="{{ m.url }}" target="_blank" rel="noopener">{{ m.url | truncate(48) }}</a></dd>{% endif %}
+    {% if m.aliases %}<dt>Slicer names</dt><dd>{{ m.aliases.split("\x1f") | join(", ") }}</dd>{% endif %}
+    {% if m.parts_per_unit > 1 %}<dt>Parts</dt><dd>{{ m.parts_per_unit }} slicer objects per {{ settings.unit(1) }}</dd>{% endif %}
+    <dt>On plates</dt><dd>{{ on_plates.get(m.slug, []) | join(", ") or "none" }}</dd>
+    <dt>Stock</dt><dd>{{ s.get("on_hand", 0) }} on hand · {{ s.get("made", 0) }} made</dd>
+  </dl>
+  {% if m.notes %}<p class="muted">{{ m.notes }}</p>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

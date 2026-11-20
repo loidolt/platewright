@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bb_link, mix, outcome %}
+{% set p = versions[0] %}
+{% block title %}Plate {{ p.code }} · Platewright{% endblock %}
+{% block content %}
+<p><a href="/plates">← Plates</a></p>
+<h1>Plate {{ p.code }} {% if not p.active %}<span class="pill">retired</span>{% endif %}</h1>
+{% if p.description %}<p>{{ p.description }}</p>{% endif %}
+
+<section class="card">
+  <h2>Version {{ p.version }} <span class="muted">(current)</span></h2>
+  <dl class="facts">
+    <dt>Makes</dt><dd>{{ p.units }} {{ settings.unit() }}: {{ mix(p.mix, models) }}</dd>
+    <dt>Time</dt><dd>{{ p.hours }} h · {{ p.min_per_unit }} min per {{ settings.unit(1) }}</dd>
+    <dt>Filament</dt>
+    <dd>{% for color, g in p.filaments.items() %}<span class="swatch" data-hex="{{ settings.palette.get(color, {}).get('hex', color) | norm_hex }}"></span>{{ color }} {{ g }} g{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+    <dt>Printer</dt><dd>{{ p.printer_model or "unknown" }}{% if p.nozzle %}, {{ p.nozzle }} mm nozzle{% endif %}</dd>
+    <dt>Locked</dt><dd>{{ p.registered_at | fmt_date }}{% if p.registered_by %} by {{ p.registered_by }}{% endif %}</dd>
+    <dt>Fingerprint</dt><dd class="small mono">{{ p.sha256[:16] }}…</dd>
+  </dl>
+  {% if p.warnings %}
+  <p class="muted">Accepted with warnings:</p>
+  <ul>{% for w in p.warnings %}<li class="warn">{{ w }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if p.bambuddy_file_id %}{{ bb_link("/files?highlight=" ~ p.bambuddy_file_id, "Open in Bambuddy", "btn small") }}{% endif %}
+</section>
+
+{% if versions | length > 1 %}
+<section class="card">
+  <h2>Earlier versions</h2>
+  <table class="grid">
+    <thead><tr><th>Version</th><th>Locked</th><th>Makes</th><th>Time</th></tr></thead>
+    <tbody>
+    {% for v in versions[1:] %}
+      <tr><td>v{{ v.version }}</td><td>{{ v.registered_at | fmt_date }}</td><td>{{ v.units }}</td><td>{{ v.hours }} h</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Runs</h2>
+  {% if runs %}
+  <table class="grid">
+    <thead><tr><th>Date</th><th>Version</th><th>Good</th><th></th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td>{{ r.date | fmt_date }}</td><td>v{{ r.version }}</td><td>{{ r.good }} / {{ r.planned }}</td>
+        <td>{{ outcome(r) }} {% if r.archive_id %}{{ bb_link("/archives/" ~ r.archive_id, "Bambuddy") }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Not printed yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

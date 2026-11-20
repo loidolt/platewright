@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bb_link, mix, outcome %}
+{% block content %}
+{% if problems %}
+<section class="card notice">
+  <h2>Settings need attention</h2>
+  <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>{{ month.month }}</h2>
+  {% if month.target %}
+  <p class="big"><strong>{{ month.good }}</strong> / {{ month.target }} good {{ settings.unit() }}</p>
+  <progress value="{{ month.good }}" max="{{ month.target }}">{{ (month.progress * 100) | round | int }}%</progress>
+  {% else %}
+  <p class="big"><strong>{{ month.good }}</strong> good {{ settings.unit() }} this month</p>
+  {% endif %}
+  <p class="muted">
+    {{ month.planned }} printed{% if month.planned %}, {{ month.failed }} failed
+    ({{ (month.fail_rate * 100) | round(1) }}%){% endif %} · {{ month.hours }} printer-hours
+  </p>
+  {% if month.target %}
+    {% if not month.remaining %}
+    <p class="good">Monthly target met.</p>
+    {% elif not month.days_left %}
+    <p class="bad">Month is over: {{ month.remaining }} short of the target.</p>
+    {% elif month.best_plate %}
+    <p>Need {{ month.remaining }} more ≈ <strong>{{ month.plates_needed }}</strong> × plate {{ month.best_plate.code }}
+      ({{ month.best_plate.units }}-up); {{ month.days_left }} days left = {{ month.slots | round(1) }} plate slots.</p>
+    {% if month.behind %}<p class="bad">Behind pace: more plates needed than slots left.</p>{% endif %}
+    {% else %}
+    <p class="muted">No active plates yet.</p>
+    {% endif %}
+  {% endif %}
+  {% if month.high_fail %}<p class="bad">Fail rate above 5%: check for wet filament, a worn plate or a dirty nozzle.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Printing now</h2>
+  <div hx-get="/partials/printing" hx-trigger="load, every 30s" hx-swap="innerHTML">
+    <p class="muted">Asking Bambuddy…</p>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Waiting for a verdict</h2>
+  {% if awaiting %}
+  <p class="muted">Finished production prints with no good / reject in Bambuddy yet. They count as all good until then.</p>
+  <ul class="list">
+    {% for r in awaiting %}
+    <li>
+      <span><strong>Plate {{ r.plate_code }}</strong> v{{ r.version }} · {{ r.date | fmt_date }} · {{ r.planned }} {{ settings.unit() }}</span>
+      {% if r.archive_id %}{{ bb_link("/archives/" ~ r.archive_id, "Open in Bambuddy", "btn small") }}{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Nothing waiting.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Demand</h2>
+  {% if plan %}
+  <ul class="list">
+    {% for p in plan %}
+    <li>
+      <span><strong>{{ p.demand.name }}</strong> · {{ p.demand.due | fmt_date }}
+        {% if p.days < 0 %}<span class="bad">(date passed)</span>{% else %}(in {{ p.days }} days){% endif %}
+        · {{ p.demand.total }} {{ settings.unit() }}</span>
+      {% if not p.short %}<span class="pill good">covered</span>
+      {% elif p.at_risk %}<span class="pill bad">short {{ p.short }}</span>
+      {% else %}<span class="pill warn">short {{ p.short }} ≈ {{ p.plates }} plates</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No open orders, events or restock targets.</p>
+  {% endif %}
+  <p class="muted">Finished {{ settings.unit() }} on hand: {{ on_hand }}</p>
+</section>
+
+<section class="card">
+  <h2>Recent runs</h2>
+  {% if recent %}
+  <table class="grid">
+    <thead><tr><th>Date</th><th>Plate</th><th>Good</th><th></th></tr></thead>
+    <tbody>
+    {% for r in recent %}
+      <tr>
+        <td>{{ r.date | fmt_date }}</td>
+        <td><a href="/plates/{{ r.plate_code }}">{{ r.plate_code }}</a> v{{ r.version }}</td>
+        <td>{{ r.good }} / {{ r.planned }}</td>
+        <td>{{ outcome(r) }}{% if r.matched_by_name %} <span class="pill warn" title="matched by file name, not fingerprint">by name</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No production runs yet. Prints of registered plates show up here after a sync.</p>
+  {% endif %}
+</section>
+
+<section class="card" id="sync">
+  {% include "_sync.html" %}
+</section>
+{% endblock %}

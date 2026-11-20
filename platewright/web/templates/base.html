@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" class="bg-neutral style-classic accent-green"
-      data-bambuddy-origin="{{ settings.bambuddy_origin }}"
-      data-bambuddy-url="{{ settings.bambuddy_url }}">
+      data-bambuddy-origin="{{ config.bambuddy_origin }}"
+      data-bambuddy-url="{{ config.bambuddy_url }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -13,8 +13,22 @@
   <script src="/static/app.js" defer></script>
 </head>
 <body>
+  {% if user %}
+  <nav class="tabs" aria-label="Platewright">
+    <a href="/" {% if nav == "today" %}aria-current="page"{% endif %}>Today</a>
+    <a href="/plates" {% if nav == "plates" %}aria-current="page"{% endif %}>Plates</a>
+    <a href="/models" {% if nav == "models" %}aria-current="page"{% endif %}>Models</a>
+    <a href="/filament" {% if nav == "filament" %}aria-current="page"{% endif %}>Filament</a>
+  </nav>
+  {% endif %}
   <main class="wrap">
     {% block content %}{% endblock %}
   </main>
+  {% if user %}
+  <footer class="wrap foot">
+    <span>{{ user.username }}{% if user.is_admin %} · admin{% endif %}</span>
+    <form method="post" action="/auth/logout"><button class="link" type="submit">Sign out</button></form>
+  </footer>
+  {% endif %}
 </body>
 </html>

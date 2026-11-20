@@ -41,8 +41,9 @@ class Settings:
     session_key: str
     cookie_secure: bool
     session_days: int
-    badge_interval: int
-    badge_count: int
+    sync_interval: int
+    data_dir: str
+    seed_file: str
 
     @property
     def bambuddy_origin(self) -> str:
@@ -51,6 +52,10 @@ class Settings:
     @property
     def callback_url(self) -> str:
         return f"{self.public_url}/auth/callback"
+
+    @property
+    def db_path(self) -> str:
+        return os.path.join(self.data_dir, "platewright.db")
 
     @property
     def sign_in_configured(self) -> bool:
@@ -81,6 +86,10 @@ def load() -> Settings:
         # Off only for plain-http local development.
         cookie_secure=os.environ.get("PLATEWRIGHT_COOKIE_SECURE", "1") != "0",
         session_days=int(os.environ.get("PLATEWRIGHT_SESSION_DAYS", "30")),
-        badge_interval=int(os.environ.get("PLATEWRIGHT_BADGE_INTERVAL", "300")),
-        badge_count=int(os.environ.get("PLATEWRIGHT_BADGE_COUNT", "1")),
+        # Sync and badge report, seconds. Bambuddy hides a badge older than 10 minutes.
+        sync_interval=int(os.environ.get("PLATEWRIGHT_SYNC_INTERVAL")
+                          or os.environ.get("PLATEWRIGHT_BADGE_INTERVAL") or "300"),
+        data_dir=os.environ.get("PLATEWRIGHT_DATA_DIR", "./data" if dev else "/data"),
+        # Settings for an empty database (JSON); afterwards the database owns them.
+        seed_file=os.environ.get("PLATEWRIGHT_SEED_FILE", ""),
     )

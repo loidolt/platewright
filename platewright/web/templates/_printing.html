@@ -1,0 +1,26 @@
+{% from "_macros.html" import bb_link %}
+{% if error and not printers %}
+<p class="bad">{{ error }}</p>
+{% elif not printers %}
+<p class="muted">No printers in Bambuddy.</p>
+{% else %}
+<ul class="list">
+  {% for p in printers %}
+  <li>
+    <span>
+      <strong>{{ p.name }}</strong> ·
+      {% if not p.connected %}<span class="bad">offline</span>
+      {% elif p.state in ("RUNNING", "PREPARE", "SLICING") %}
+        {{ p.subtask_name or p.current_print or "printing" }} · {{ (p.progress or 0) | round | int }}%
+        {% if p.remaining_time %}· {{ p.remaining_time // 60 }} h {{ p.remaining_time % 60 }} min left{% endif %}
+      {% elif p.state == "PAUSE" %}<span class="warn">paused</span> · {{ p.subtask_name or "" }}
+      {% elif p.state == "FINISH" %}finished · {{ p.subtask_name or "" }}
+      {% elif p.state == "FAILED" %}<span class="bad">failed</span> · {{ p.subtask_name or "" }}
+      {% else %}<span class="muted">idle</span>{% endif %}
+    </span>
+    {% if p.state in ("RUNNING", "PREPARE", "SLICING") %}<progress value="{{ p.progress or 0 }}" max="100"></progress>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+<p>{{ bb_link("/queue", "Open the queue in Bambuddy", "btn small") }}</p>
+{% endif %}

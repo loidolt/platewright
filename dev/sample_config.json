@@ -1,0 +1,16 @@
+{
+  "monthly_target": 500,
+  "unit_name": "part",
+  "max_plate_hours": 24,
+  "assumed_fail_rate": 0.03,
+  "reorder_days": 21,
+  "printers": {
+    "X1C": { "model": "Bambu Lab X1 Carbon", "plates_per_day": 1 }
+  },
+  "palette": {
+    "White":  { "hex": "#FFFFFF", "material": "PLA", "slot": "A1" },
+    "Black":  { "hex": "#000000", "material": "PLA", "slot": "A2" },
+    "Brown":  { "hex": "#9D432C", "material": "PLA", "slot": "A3" },
+    "Red":    { "hex": "#C12E1F", "material": "PLA", "slot": "A4" }
+  }
+}

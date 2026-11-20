@@ -1,30 +1,41 @@
-"""Phase 0 spike: a hello page that proves the sidebar-app setup.
+"""Platewright's web app: sign-in with Bambuddy and the read-only pages (phase 1).
 
 - sign in with Bambuddy inside Bambuddy's frame (connected app, PKCE);
-- follow Bambuddy's theme (postMessage, see static/app.js);
-- ask Bambuddy to open its queue (bambuddy:navigate);
-- report a badge count every few minutes;
+- follow Bambuddy's theme and open its pages (postMessage, static/app.js);
+- sync finished prints every few minutes and report the badge count after each pass;
+- Today, Plates, Models and Filament pages;
 - refuse to be framed by anything but Bambuddy.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import hmac
+import json
 import logging
 import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 
 import httpx
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from platewright import config
 from platewright.bambuddy.badge import BadgeReporter
-from platewright.bambuddy.client import Bambuddy, SignInError, authorize_url, new_verifier
-from platewright.config import Settings, origin_of
+from platewright.bambuddy.client import Bambuddy, BambuddyError, SignInError, authorize_url, new_verifier
+from platewright.bambuddy.sync import SyncLoop
+from platewright.config import Settings as AppConfig
+from platewright.config import origin_of
+from platewright.core.mix import UNLINKED
+from platewright.core.palette import norm_hex
+from platewright.core.plan import demand_plan, fail_rate, filament, month_status
+from platewright.core.plates import license_warning
+from platewright.store.db import Store
 from platewright.web.session import Sessions
 
 logger = logging.getLogger(__name__)
@@ -51,30 +62,75 @@ class RedactCallbackQuery(logging.Filter):
         return True
 
 
-def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
+class LoginRequired(Exception):
+    def __init__(self, next_path: str):
+        self.next_path = next_path
+
+
+class Cached:
+    """A Bambuddy read kept for a few seconds, so page loads don't hammer it."""
+
+    def __init__(self, ttl: float):
+        self.ttl = ttl
+        self._at = 0.0
+        self._value = None
+        self._error: str | None = None
+
+    async def get(self, fetch):
+        if time.monotonic() - self._at > self.ttl:
+            try:
+                self._value, self._error = await fetch(), None
+            except BambuddyError as exc:
+                self._error = str(exc)
+            self._at = time.monotonic()
+        return self._value, self._error
+
+
+def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTransport | None = None,
+               store: Store | None = None) -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s: %(message)s")
     access_log = logging.getLogger("uvicorn.access")
     if not any(isinstance(f, RedactCallbackQuery) for f in access_log.filters):
         access_log.addFilter(RedactCallbackQuery())
-    settings = settings or config.load()
-    bambuddy = Bambuddy(settings, transport=transport)
-    badge = BadgeReporter(bambuddy, count=settings.badge_count, interval=settings.badge_interval)
-    sessions = Sessions(settings)
+
+    cfg = app_config or config.load()
+    store = store or Store(cfg.db_path)
+    if cfg.seed_file and Path(cfg.seed_file).is_file():
+        if store.seed_settings(json.loads(Path(cfg.seed_file).read_text())):
+            logger.info("Settings seeded from %s", cfg.seed_file)
+    bambuddy = Bambuddy(cfg, transport=transport)
+    sessions = Sessions(cfg)
     templates = Jinja2Templates(directory=HERE / "templates")
-    templates.env.globals.update(settings=settings)
+    templates.env.globals.update(config=cfg, UNLINKED=UNLINKED)
+    templates.env.filters["norm_hex"] = norm_hex
+    templates.env.filters["fmt_date"] = lambda d: dt.date.fromisoformat(d[:10]).strftime("%b %-d") if d else ""
+
+    def badge_count() -> int:
+        today = dt.date.today()
+        plan = demand_plan(store.open_demands(), store.delivered(),
+                           {k: v["on_hand"] for k, v in store.stock().items()}, store.active_plates(),
+                           fail_rate(store.run_totals(), store.settings()), store.settings(), today)
+        return len(store.awaiting_verdict(today=today)) + sum(p.at_risk for p in plan)
+
+    badge = BadgeReporter(bambuddy, badge_count)
+    sync = SyncLoop(bambuddy, store, cfg.sync_interval, after=badge.report)
+    spools_cache = Cached(60)
+    printers_cache = Cached(20)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        badge.start()
+        sync.start()
         try:
             yield
         finally:
-            await badge.stop()
+            await sync.stop()
             await bambuddy.aclose()
 
     app = FastAPI(title="Platewright", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
-    app.state.settings = settings
+    app.state.config = cfg
+    app.state.store = store
     app.state.badge = badge
+    app.state.sync = sync
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
     csp = (
@@ -86,7 +142,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         "base-uri 'self'; "
         "form-action 'self'; "
         "object-src 'none'; "
-        f"frame-ancestors {settings.bambuddy_origin}"
+        f"frame-ancestors {cfg.bambuddy_origin}"
     )
 
     @app.middleware("http")
@@ -99,47 +155,138 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         return response
 
+    @app.exception_handler(LoginRequired)
+    async def login_required(request: Request, exc: LoginRequired):
+        if not cfg.sign_in_configured:
+            return page(request, "message.html", 503, title="Sign-in not set up",
+                        message="PLATEWRIGHT_CLIENT_ID and PLATEWRIGHT_CLIENT_SECRET are not set.")
+        if request.headers.get("HX-Request"):
+            # An htmx poll or button: reload the page it sits on, which then signs in again.
+            current = urlsplit(request.headers.get("HX-Current-URL", ""))
+            page_path = current.path + (f"?{current.query}" if current.query else "")
+            return Response(status_code=204, headers={"HX-Redirect": _safe_next(page_path)})
+        next_path = exc.next_path if request.method == "GET" else "/"
+        # Opened from the sidebar: go straight to Bambuddy, no button. After the first
+        # consent Bambuddy answers without a prompt.
+        return RedirectResponse(f"/auth/login?next={quote(next_path, safe='/')}", status_code=303)
+
     def page(request: Request, name: str, status_code: int = 200, **context) -> HTMLResponse:
+        context.setdefault("user", sessions.user(request))
+        context.setdefault("settings", store.settings())
+        context.setdefault("nav", "")
         response = templates.TemplateResponse(request, name, context, status_code=status_code)
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    def require_user(request: Request) -> dict:
+        user = sessions.user(request)
+        if user is None:
+            query = f"?{request.url.query}" if request.url.query else ""
+            raise LoginRequired(_safe_next(request.url.path + query))
+        return user
 
     def require_same_origin(request: Request) -> None:
         # POSTs come from our own pages only. The Lax cookie already keeps
         # other sites' forms out; this also covers sibling subdomains.
         origin = request.headers.get("origin")
-        if origin is not None and origin != origin_of(settings.public_url):
+        if origin is not None and origin != origin_of(cfg.public_url):
             raise HTTPException(403, "Cross-origin request refused")
 
-    # -- pages ------------------------------------------------------------
+    def models_by_slug() -> dict:
+        return {r["slug"]: r for r in store.models()}
+
+    # -- pages ------------------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
-    async def home(request: Request):
-        user = sessions.user(request)
-        if user is None:
-            if not settings.sign_in_configured:
-                return page(request, "message.html", 503, title="Sign-in not set up",
-                            message="PLATEWRIGHT_CLIENT_ID and PLATEWRIGHT_CLIENT_SECRET are not set.")
-            # Opened from the sidebar: go straight to Bambuddy, no button.
-            # After the first consent Bambuddy answers without a prompt.
-            return RedirectResponse("/auth/login", status_code=303)
-        return page(request, "hello.html", user=user, badge=badge.state, badge_configured=badge.configured)
+    async def today_page(request: Request):
+        user = require_user(request)
+        today = dt.date.today()
+        settings = store.settings()
+        totals = store.run_totals()
+        plates = store.active_plates()
+        stock = store.stock()
+        plan = demand_plan(store.open_demands(), store.delivered(), {k: v["on_hand"] for k, v in stock.items()},
+                           plates, fail_rate(totals, settings), settings, today)
+        return page(request, "today.html", user=user, nav="today", month=month_status(totals, plates, settings, today),
+                    awaiting=store.awaiting_verdict(today=today), plan=plan, recent=store.runs(limit=10),
+                    last_sync=store.state("last_sync"), badge=badge.state, models=models_by_slug(),
+                    on_hand=sum(max(v["on_hand"], 0) for v in stock.values()), problems=settings.problems())
+
+    @app.get("/plates", response_class=HTMLResponse)
+    async def plates_page(request: Request):
+        user = require_user(request)
+        return page(request, "plates.html", user=user, nav="plates", plates=store.plates(), models=models_by_slug())
+
+    @app.get("/plates/{code}", response_class=HTMLResponse)
+    async def plate_page(request: Request, code: str):
+        user = require_user(request)
+        versions = store.plate_versions(code.upper())
+        if not versions:
+            raise HTTPException(404, "No such plate")
+        runs = store.runs(plate_code=versions[0].code, limit=20)
+        return page(request, "plate.html", user=user, nav="plates", versions=versions, runs=runs,
+                    models=models_by_slug())
+
+    @app.get("/models", response_class=HTMLResponse)
+    async def models_page(request: Request):
+        user = require_user(request)
+        stock = store.stock()
+        core = {m.slug: m for m in store.core_models()}
+        on_plates: dict[str, list[str]] = {}
+        for p in store.plates(active_only=True):
+            for slug in p.mix:
+                on_plates.setdefault(slug, []).append(p.code)
+        return page(request, "models.html", user=user, nav="models", models=store.models(), stock=stock,
+                    on_plates=on_plates, warnings={s: license_warning(m) for s, m in core.items()})
+
+    @app.get("/filament", response_class=HTMLResponse)
+    async def filament_page(request: Request):
+        user = require_user(request)
+        settings = store.settings()
+        spools, error = await spools_cache.get(bambuddy.spools)
+        rows, other = filament(spools or [], store.run_totals(), settings, dt.date.today())
+        return page(request, "filament.html", user=user, nav="filament", rows=rows, other=other, error=error,
+                    loaded=spools is not None)
+
+    @app.get("/partials/printing", response_class=HTMLResponse)
+    async def printing_partial(request: Request):
+        require_user(request)
+
+        async def fetch():
+            out = []
+            for p in await bambuddy.printers():
+                try:
+                    status = await bambuddy.printer_status(p["id"])
+                except BambuddyError:
+                    status = {}
+                out.append({"name": p.get("name") or f"printer {p['id']}", "id": p["id"], **status})
+            return out
+
+        printers, error = await printers_cache.get(fetch)
+        return page(request, "_printing.html", printers=printers or [], error=error)
+
+    @app.post("/sync", response_class=HTMLResponse)
+    async def sync_now(request: Request):
+        require_same_origin(request)
+        user = require_user(request)
+        if not user.get("is_admin"):
+            raise HTTPException(403, "Admins only")
+        await sync.run_now()
+        return page(request, "_sync.html", user=user, last_sync=store.state("last_sync"), badge=badge.state)
 
     @app.get("/whoami", response_class=HTMLResponse)
     async def whoami(request: Request):
-        """htmx probe: does an XHR from inside the frame carry the cookie?"""
-        user = sessions.user(request)
-        return page(request, "_whoami.html", user=user)
+        return page(request, "_whoami.html")
 
-    # -- sign in with Bambuddy -------------------------------------------
+    # -- sign in with Bambuddy ------------------------------------------------------------
 
     @app.get("/auth/login")
     async def login(request: Request, next: str | None = None):
-        if not settings.sign_in_configured:
+        if not cfg.sign_in_configured:
             raise HTTPException(503, "Sign-in not set up")
         state = secrets.token_urlsafe(24)
         verifier = new_verifier()
-        response = RedirectResponse(authorize_url(settings, state=state, verifier=verifier), status_code=303)
+        response = RedirectResponse(authorize_url(cfg, state=state, verifier=verifier), status_code=303)
         sessions.start_auth(response, state=state, verifier=verifier, next_path=_safe_next(next))
         return response
 
@@ -177,27 +324,10 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     @app.post("/auth/logout", response_class=HTMLResponse)
     async def logout(request: Request):
         require_same_origin(request)
-        response = page(request, "message.html", title="Signed out",
+        response = page(request, "message.html", user=None, title="Signed out",
                         message="You are signed out of Platewright (not of Bambuddy).", retry=True)
         sessions.sign_out(response)
         return response
-
-    # -- badge --------------------------------------------------------------
-
-    @app.get("/badge", response_class=HTMLResponse)
-    async def badge_status(request: Request):
-        return page(request, "_badge.html", badge=badge.state, badge_configured=badge.configured,
-                    user=sessions.user(request))
-
-    @app.post("/badge", response_class=HTMLResponse)
-    async def badge_set(request: Request, count: int = Form(..., ge=0, le=999)):
-        require_same_origin(request)
-        user = sessions.user(request)
-        if user is None or not user.get("is_admin"):
-            raise HTTPException(403, "Admins only")
-        badge.set_count(count)
-        await badge.report()
-        return page(request, "_badge.html", badge=badge.state, badge_configured=badge.configured, user=user)
 
     @app.get("/health")
     async def health():

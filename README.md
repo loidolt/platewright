@@ -19,17 +19,25 @@ theme, and links back to Bambuddy's own pages. It uses only the integration poin
 documents for sidebar apps ([external links](https://wiki.bambuddy.cool/features/external-links/),
 [connected apps](https://wiki.bambuddy.cool/features/connected-apps/)) and its REST API.
 
-**Status: phase 0**, written against Bambuddy v1.3.1. It is a hello page that proves the
-sidebar-app setup before any pipeline code exists:
+**Status: phase 1 (read-only)**, written against Bambuddy v1.3.1.
 
-1. **Sign in with Bambuddy** (connected app, OAuth code flow with PKCE) inside Bambuddy's frame. It
-   shows the username, groups and `is_admin`. Platewright keeps its own `SameSite=Lax` session
-   cookie.
-2. **Follows Bambuddy's theme** from the `bambuddy:theme` message, asking with
-   `bambuddy:theme-request`, and only from Bambuddy's origin.
-3. **Open in Bambuddy**: `{"type": "bambuddy:navigate", "path": "/queue"}`.
-4. **Sidebar badge**: `PUT /api/v1/external-links/badge` from the server every 5 minutes.
-5. `Content-Security-Policy: frame-ancestors <Bambuddy's origin>`.
+- **Today:** good parts this month against the target and the pace needed, what each printer is
+  doing, finished production prints still waiting for a good / reject verdict in Bambuddy, demand
+  coverage, recent runs, and the last sync.
+- **Plates**, **Models**: locked plate versions with their mix, time and filament per part; models
+  with their test-print, license and safety badges and stock.
+- **Filament:** palette colors with grams on hand from Bambuddy's spool inventory, use per day and
+  days left, and spools that match no palette color.
+- **Sync:** every 5 minutes Platewright reads Bambuddy's print log and matches each finished print
+  to a locked plate version by the archive's fingerprint (sha256 of the file), falling back to the
+  `PLATE-<code>_` file name. A verdict changed later in Bambuddy is picked up on the next pass.
+- **Sidebar badge:** finished production prints without a verdict plus demands at risk, reported
+  after each sync.
+
+Registering models and locking plates (with the checks in `platewright/core/plates.py`) come in
+phase 2. The sidebar-app basics from phase 0 stay: sign-in with Bambuddy inside its frame (OAuth
+code flow with PKCE), the `bambuddy:theme` / `bambuddy:navigate` messages with Bambuddy's origin
+only, and `Content-Security-Policy: frame-ancestors <Bambuddy's origin>`.
 
 ## Hosting
 
@@ -37,7 +45,7 @@ Put Platewright on a sibling host of Bambuddy, for example `plates.example.com` 
 `print.example.com`. Browsers then treat its cookie as first-party inside Bambuddy's frame. On an
 unrelated domain the cookie is third-party, and Safari and Firefox drop it.
 
-Server-side calls (the sign-in token exchange and the badge) can go to Bambuddy over the LAN
+Server-side calls (the sign-in token exchange, the sync and the badge) can go to Bambuddy over the LAN
 (`PLATEWRIGHT_BAMBUDDY_API_URL`).
 
 ## Setup in Bambuddy (as admin)
@@ -63,12 +71,28 @@ happens without a prompt.
 | `PLATEWRIGHT_BAMBUDDY_URL` | required | Where browsers reach Bambuddy; the only origin allowed to frame Platewright. |
 | `PLATEWRIGHT_BAMBUDDY_API_URL` | = `PLATEWRIGHT_BAMBUDDY_URL` | Where the server reaches Bambuddy's API. |
 | `PLATEWRIGHT_CLIENT_ID`, `PLATEWRIGHT_CLIENT_SECRET` | | The connected app. |
-| `PLATEWRIGHT_BAMBUDDY_KEY` | | API key with Send notifications (badge). |
+| `PLATEWRIGHT_BAMBUDDY_KEY` | | API key with Read Status (sync, pages) and Send notifications (badge). |
 | `PLATEWRIGHT_SESSION_KEY` | required | Signs the session cookie, at least 32 characters. |
-| `PLATEWRIGHT_BADGE_INTERVAL` | `300` | Seconds between badge reports. Bambuddy hides a count older than 10 minutes. |
-| `PLATEWRIGHT_BADGE_COUNT` | `1` | Phase 0 stand-in count. |
+| `PLATEWRIGHT_SYNC_INTERVAL` | `300` | Seconds between syncs; the badge is reported after each. Bambuddy hides a badge older than 10 minutes. |
+| `PLATEWRIGHT_DATA_DIR` | `/data` | Holds `platewright.db` (SQLite). |
+| `PLATEWRIGHT_SEED_FILE` | | Settings JSON (wording, target, printers, palette) for a new database; ignored once settings exist. |
 | `PLATEWRIGHT_COOKIE_SECURE` | `1` | `0` only for plain-http local development. |
 | `PLATEWRIGHT_DEV` | | `1`: throwaway session key and localhost URLs. |
+
+## Settings
+
+Stored in the database. Keys: `unit_name` (e.g. `toy`, `part`), `period_target` (good parts per
+month, 0 = none), `max_plate_hours`, `assumed_fail_rate`, `reorder_days`, `operator_group`,
+`printers` (`{"X1C": {"model": "Bambu Lab X1 Carbon", "plates_per_day": 1}}`; `model` exactly as
+the slicer writes it) and `palette` (`{"White": {"hex": "#FFFFFF", "material": "PLA", "slot": "A1"}}`).
+`dev/sample_config.json` is an example. Load them with `PLATEWRIGHT_SEED_FILE` or:
+
+```bash
+docker exec platewright platewright import-config /data/settings.json
+```
+
+`import-config` also reads a toys.py `config.json`. Other commands: `platewright sync`, and
+`platewright check-plate <file.gcode.3mf>` to run the plate checks without locking anything.
 
 ## Running
 
@@ -88,17 +112,28 @@ uv run pytest
 ```
 
 Try it locally against a stand-in Bambuddy. `dev/fake_bambuddy.py` imitates only what Platewright
-uses: the framing page, theme and navigate messages, an already-granted sign-in, the token exchange
-and the badge.
+uses: the framing page, theme and navigate messages, an already-granted sign-in, the token exchange,
+the badge, and sample print log, archives, spools and printer status.
 
-```bash
-uv run uvicorn dev.fake_bambuddy:app --port 3700
-```
+1. Seed a dev database (`./data`) with sample settings, two models and a plate. It prints the
+   plate's fingerprint:
 
-```bash
-PLATEWRIGHT_DEV=1 PLATEWRIGHT_COOKIE_SECURE=0 PLATEWRIGHT_BAMBUDDY_KEY=bb_dev PLATEWRIGHT_CLIENT_ID=bba_dev PLATEWRIGHT_CLIENT_SECRET=bbs_dev uv run uvicorn platewright.web.app:create_app --factory --port 3710
-```
+   ```bash
+   PLATEWRIGHT_DEV=1 uv run python -m dev.seed_dev
+   ```
 
-Then open <http://localhost:3700>.
+2. Start the stand-in with that fingerprint, so its sample prints match the plate:
+
+   ```bash
+   FAKE_PLATE_SHA=<fingerprint> uv run uvicorn dev.fake_bambuddy:app --port 3700
+   ```
+
+3. Start Platewright:
+
+   ```bash
+   PLATEWRIGHT_DEV=1 PLATEWRIGHT_COOKIE_SECURE=0 PLATEWRIGHT_BAMBUDDY_KEY=bb_dev PLATEWRIGHT_CLIENT_ID=bba_dev PLATEWRIGHT_CLIENT_SECRET=bbs_dev uv run uvicorn platewright.web.app:create_app --factory --port 3710
+   ```
+
+4. Open <http://localhost:3700>.
 
 GitHub Actions builds the image as `ghcr.io/loidolt/platewright` (`latest` from `main`).
