@@ -83,7 +83,7 @@
     {% endif %}
 
     {% if can(user, settings, "operator") %}
-    <form method="post" action="/demand/{{ d.slug }}/label" class="card stack">
+    <form method="post" action="/demand/{{ d.slug }}/label" hx-post="/demand/{{ d.slug }}/label" hx-swap="none" class="card stack">
       <h2 class="card-title">{{ icon("tag") }} Bag Label</h2>
       {% set first_model = (needs | list | first) or ((all_models | first).slug if all_models else "_mixed") %}
       {% with src = "/demand/" ~ d.slug ~ "/label.png?model=" ~ (first_model | urlencode) %}{% include "_label_preview.html" %}{% endwith %}

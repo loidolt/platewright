@@ -42,6 +42,12 @@ def bag_content(d, model, qty: int | None, settings: Settings, today: dt.date) -
 def register(app: FastAPI, ctx: Ctx) -> None:
     store = ctx.store
 
+    def done(request: Request, path: str, message: str, tone: str = ""):
+        """From htmx: only a toast, so the page keeps its place. Otherwise back to the page."""
+        if request.headers.get("HX-Request"):
+            return ctx.page(request, "_toast.html", message=message, tone=tone)
+        return ctx.back(path, message, tone)
+
     def label_size(settings: Settings) -> labels.LabelSize:
         try:
             return labels.size(settings.label_size)
@@ -100,8 +106,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         try:
             await send(img, copies)
         except labels.LabelError as exc:
-            return ctx.back(f"/demand/{slug}", f"Label not printed: {exc}", "bad")
-        return ctx.back(f"/demand/{slug}", f"{copies} bag label{'' if copies == 1 else 's'} sent to the label printer")
+            return done(request, f"/demand/{slug}", f"Label not printed: {exc}", "bad")
+        return done(request, f"/demand/{slug}", f"{copies} bag label{'' if copies == 1 else 's'} sent to the label printer")
 
     # -- spool labels -----------------------------------------------------------------------------
 
@@ -112,14 +118,14 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         try:
             data = await ctx.bambuddy.spool_label(spool_id, *spec.mm)
         except BambuddyError as exc:
-            return ctx.back("/filament", f"Bambuddy didn't draw the label: {exc}", "bad")
+            return done(request, "/filament", f"Bambuddy didn't draw the label: {exc}", "bad")
         try:
             await send(Image.open(io.BytesIO(data)), copies)
         except labels.LabelError as exc:
-            return ctx.back("/filament", f"Label not printed: {exc}", "bad")
+            return done(request, "/filament", f"Label not printed: {exc}", "bad")
         except OSError as exc:  # not a picture Pillow can read
-            return ctx.back("/filament", f"Bambuddy's label couldn't be read: {exc}", "bad")
-        return ctx.back("/filament", f"Label for spool #{spool_id} sent to the label printer")
+            return done(request, "/filament", f"Bambuddy's label couldn't be read: {exc}", "bad")
+        return done(request, "/filament", f"Label for spool #{spool_id} sent to the label printer")
 
     # -- test label (Settings) --------------------------------------------------------------------
 
@@ -135,5 +141,5 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         try:
             await send(img)
         except labels.LabelError as exc:
-            return ctx.back("/settings#labels", f"Label not printed: {exc}", "bad")
-        return ctx.back("/settings#labels", "Test label sent to the label printer")
+            return done(request, "/settings#labels", f"Label not printed: {exc}", "bad")
+        return done(request, "/settings#labels", "Test label sent to the label printer")

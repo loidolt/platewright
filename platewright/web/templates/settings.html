@@ -130,7 +130,7 @@
 
       <h3 class="small secondary mt">Label printer</h3>
       {% if settings.labels_on %}
-      <form method="post" action="/settings/test-label"><button class="btn btn-sm" type="submit">{{ icon("tag") }} Print a Test Label</button></form>
+      <form method="post" action="/settings/test-label" hx-post="/settings/test-label" hx-swap="none"><button class="btn btn-sm" type="submit">{{ icon("tag") }} Print a Test Label</button></form>
       {% else %}<p class="muted">Not set up.</p>{% endif %}
 
       <h3 class="small secondary mt">Webhook</h3>

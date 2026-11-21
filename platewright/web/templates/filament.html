@@ -45,7 +45,7 @@
       {% for s in spools %}
       <li class="item"><span class="color"><span class="swatch" data-hex="#{{ (s.rgba or '')[:6] }}"></span>
         <span><span class="muted">#{{ s.id }}</span> {{ s.brand or "" }} {{ s.material or "" }} {{ s.color_name or "" }}</span></span>
-        <form method="post" action="/filament/spools/{{ s.id }}/label"><button class="btn btn-sm" type="submit">{{ icon("printer") }} Label</button></form></li>
+        <form method="post" action="/filament/spools/{{ s.id }}/label" hx-post="/filament/spools/{{ s.id }}/label" hx-swap="none"><button class="btn btn-sm" type="submit">{{ icon("printer") }} Label</button></form></li>
       {% endfor %}
     </ul>
     <p class="help mt">Bambuddy draws the label, as in its Spool Inventory; it goes straight to the label printer.</p>

@@ -1,0 +1,4 @@
+{# A notice for an htmx action that leaves the page as it is: added to the page's toasts. #}
+<div hx-swap-oob="beforeend:.toasts"><div class="toast {{ tone }}" {% if tone == "bad" %}role="alert"{% else %}role="status"{% endif %} data-toast>
+  {{- icon({"bad": "circle-x", "warn": "circle-alert"}.get(tone, "circle-check")) }}<span>{{ message }}</span>
+  <button type="button" data-dismiss aria-label="Close">{{ icon("x") }}</button></div></div>

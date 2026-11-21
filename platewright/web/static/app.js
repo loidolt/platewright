@@ -100,7 +100,8 @@
     setTimeout(function () { toast.remove(); }, 300);
   }
   function toasts() {
-    document.querySelectorAll("[data-toast]").forEach(function (t) {
+    document.querySelectorAll("[data-toast]:not([data-armed])").forEach(function (t) {
+      t.setAttribute("data-armed", "");
       // errors and warnings stay longer, as Bambuddy's do
       var slow = t.classList.contains("bad") || t.classList.contains("warn");
       setTimeout(function () { dismiss(t); }, slow ? 8000 : 4000);
@@ -175,4 +176,7 @@
 
   document.addEventListener("DOMContentLoaded", function () { paint(); toasts(); });
   document.addEventListener("htmx:afterSwap", function (e) { paint(e.target); });
+  // A toast an htmx action added (e.g. a label printed) goes away like the others.
+  document.addEventListener("htmx:oobAfterSwap", toasts);
+  document.addEventListener("htmx:afterSettle", toasts);
 })();

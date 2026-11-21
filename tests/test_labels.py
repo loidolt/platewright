@@ -199,3 +199,20 @@ def test_label_printer_settings_are_checked(client, fake, store, sent):
     assert r.status_code == 303 and store.settings().labels_on
     r = client.post("/settings/test-label")
     assert r.status_code == 303 and len(sent) == 1
+
+
+def test_label_buttons_from_htmx_answer_with_a_toast_only(client, fake, store, sent):
+    """Printing keeps the page where it is: htmx gets a toast to add, not a redirect."""
+    sign_in(client, fake)
+    add_demand(store)
+    hx = {"HX-Request": "true"}
+    r = client.post("/demand/fair/label", data={"model": "nunu", "qty": "2", "copies": "1"}, headers=hx)
+    assert r.status_code == 200 and "location" not in r.headers
+    assert 'hx-swap-oob="beforeend:.toasts"' in r.text and "no label printer is set up" in r.text and 'role="alert"' in r.text
+    store.set_settings(LABELS_ON)
+    r = client.post("/demand/fair/label", data={"model": "nunu", "qty": "2", "copies": "1"}, headers=hx)
+    assert r.status_code == 200 and "1 bag label sent" in r.text and 'role="status"' in r.text
+    r = client.post("/settings/test-label", headers=hx)
+    assert r.status_code == 200 and "Test label sent" in r.text and len(sent) == 2
+    page = client.get("/demand/fair").text
+    assert 'hx-post="/demand/fair/label" hx-swap="none"' in page
