@@ -11,6 +11,7 @@
     <a href="#messages">{{ icon("send") }} Messages</a>
     <a href="#printers">{{ icon("printer") }} Printers</a>
     <a href="#palette">{{ icon("disc-3") }} Palette</a>
+    <a href="#labels">{{ icon("tag") }} Label printer</a>
     <a href="#bambuddy">{{ icon("refresh-cw") }} Bambuddy</a>
   </nav>
 
@@ -91,6 +92,24 @@
         </table>
       </section>
 
+      <section class="card stack" id="labels">
+        <h2 class="card-title">Label Printer</h2>
+        <p class="help">A Brother QL label printer on the network prints spool labels (drawn by Bambuddy) and bag labels for
+          finished {{ s.unit() }}. This server sends the labels, so it must reach the printer: as an IPP print job on
+          port 631 (the printer confirms each job), or on the raw port 9100 for printers without IPP (no confirmation).
+          Leave the address empty for no label printer.</p>
+        <div class="form-grid">
+          {% call field("Address", "IP address or host name, e.g. 192.168.1.40.", opt=true) %}
+            <input type="text" name="label_printer_host" value="{{ s.label_printer_host }}" class="mono" autocomplete="off">{% endcall %}
+          {% call field("Connection") %}
+            <select name="label_printer_protocol">{% for k, v in label_protocols.items() %}<option value="{{ k }}" {% if k == s.label_printer_protocol %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>{% endcall %}
+          {% call field("Model") %}
+            <select name="label_printer_model">{% for m in label_models %}<option {% if m == s.label_printer_model %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>{% endcall %}
+          {% call field("Label roll loaded") %}
+            <select name="label_size">{% for z in label_sizes %}<option value="{{ z.identifier }}" {% if z.identifier == s.label_size %}selected{% endif %}>{{ z.name }}</option>{% endfor %}</select>{% endcall %}
+        </div>
+      </section>
+
       <div class="savebar">
         <span class="help">Saving re-checks the palette and printers.</span>
         <a class="btn btn-ghost" href="/settings/export">{{ icon("download") }} Download JSON</a>
@@ -108,6 +127,11 @@
         {% if messages_state.last_at %}<span class="help">· last "{{ messages_state.last_title }}" at {{ messages_state.last_at | fmt_when }} to {{ messages_state.channels }} channel{{ "" if messages_state.channels == 1 else "s" }}</span>{% endif %}</p>
       {% else %}<p class="muted">None sent yet.</p>{% endif %}
       <form method="post" action="/settings/test-message"><button class="btn btn-sm" type="submit">{{ icon("send") }} Send a Test Message</button></form>
+
+      <h3 class="small secondary mt">Label printer</h3>
+      {% if settings.labels_on %}
+      <form method="post" action="/settings/test-label"><button class="btn btn-sm" type="submit">{{ icon("tag") }} Print a Test Label</button></form>
+      {% else %}<p class="muted">Not set up.</p>{% endif %}
 
       <h3 class="small secondary mt">Webhook</h3>
       {% if not webhook_set_up %}<p class="muted">Not set up (PLATEWRIGHT_WEBHOOK_SECRET), so new prints show up with the regular sync, every few minutes.</p>

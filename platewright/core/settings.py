@@ -21,6 +21,11 @@ DEFAULTS: dict = {
     "messages": True,  # demand alerts and the weekly summary through Bambuddy's channels
     "summary_weekday": 0,  # Monday
     "summary_hour": 8,
+    # A Brother QL label printer on the network, for spool and bag labels. No address = none.
+    "label_printer_host": "",
+    "label_printer_protocol": "ipp",  # ipp (port 631) or raw (port 9100)
+    "label_printer_model": "QL-810W",
+    "label_size": "29x90",
 }
 
 
@@ -39,6 +44,10 @@ class Settings:
     messages: bool = True
     summary_weekday: int = 0
     summary_hour: int = 8
+    label_printer_host: str = ""
+    label_printer_protocol: str = "ipp"
+    label_printer_model: str = "QL-810W"
+    label_size: str = "29x90"
 
     @classmethod
     def from_values(cls, values: dict) -> Settings:
@@ -57,7 +66,15 @@ class Settings:
             messages=bool(v["messages"]),
             summary_weekday=int(v["summary_weekday"]) % 7,
             summary_hour=min(max(int(v["summary_hour"]), 0), 23),
+            label_printer_host=str(v["label_printer_host"]).strip(),
+            label_printer_protocol=str(v["label_printer_protocol"]).strip(),
+            label_printer_model=str(v["label_printer_model"]).strip(),
+            label_size=str(v["label_size"]).strip(),
         )
+
+    @property
+    def labels_on(self) -> bool:
+        return bool(self.label_printer_host)
 
     def unit(self, n: int | None = None) -> str:
         return self.unit_name if n == 1 else self.unit_name + "s"

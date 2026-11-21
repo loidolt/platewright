@@ -236,6 +236,23 @@ def spools(x_api_key: str = Header("")):
     ]
 
 
+@app.post("/api/v1/inventory/labels/preview")
+def spool_label(body: dict = Body(...), x_api_key: str = Header("")):
+    """A stand-in for Bambuddy's spool label: its size from the custom layout, the spool's text."""
+    _key(x_api_key)
+    from platewright import labels
+
+    layout = body.get("layout") or {}
+    w, h = (round(float(layout.get(k, d)) * 300 / 25.4) for k, d in (("label_w_mm", 62), ("label_h_mm", 29)))
+    spool = next((s for s in spools(x_api_key) if s["id"] == body.get("spool_id")), None)
+    if spool is None:
+        raise HTTPException(404, "Spool not found")
+    spec = labels.LabelSize("fake", "fake", w, h, False, h)
+    img = labels.bag_label(spec, title=f"{spool['brand']} {spool['material']}", headline=spool["color_name"],
+                           lines=[f"#{spool['rgba'][:6]}", f"Spool #{spool['id']}"], qr_url=f"spool:{spool['id']}")
+    return Response(labels.png(img), media_type="image/png")
+
+
 PRINTERS = {
     1: ("X1C", {"connected": True, "state": "RUNNING", "subtask_name": "PLATE-N_44up", "progress": 63.0,
                 "remaining_time": 512}),

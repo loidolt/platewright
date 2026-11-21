@@ -51,7 +51,8 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         return ctx.page(request, "demand_detail.html", user=user, nav="demand", d=d, p=p, suggest=suggest,
                         needs=store.demand_needs(slug), delivered=store.delivered().get(slug, {}), ledger=ledger,
                         models=ctx.models_by_slug(), plates=store.plates(active_only=True),
-                        printers=list(store.settings().printers), today=dt.date.today().isoformat())
+                        printers=list(store.settings().printers), today=dt.date.today().isoformat(),
+                        all_models=store.models())
 
     @app.get("/demand/{slug}/edit", response_class=HTMLResponse)
     async def edit_demand(request: Request, slug: str):

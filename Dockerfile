@@ -9,6 +9,9 @@ COPY platewright ./platewright
 RUN uv sync --frozen --no-dev
 
 FROM python:3.12-slim
+# DejaVu Sans for the labels Platewright draws.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 1000 platewright \
  && useradd --system --uid 1000 --gid 1000 --home-dir /app platewright \
  && mkdir -p /data && chown platewright /data

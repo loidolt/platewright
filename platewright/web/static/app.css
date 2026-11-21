@@ -695,3 +695,7 @@ form.is-submitting .dropzone .busy-note .i { animation: spin 0.9s linear infinit
 .toast.warn > .i { color: var(--warn-fg); }
 .toast.bad { border-color: var(--bad-line); background: color-mix(in srgb, var(--bg-secondary) 90%, #ef4444); }
 .toast.bad > .i { color: var(--bad-fg); }
+
+/* Label preview: the label as it prints, black on white in either theme. */
+.label-preview { display: block; width: 100%; height: auto; background: #fff; border: 1px solid var(--bg-tertiary);
+  border-radius: 6px; image-rendering: auto; }

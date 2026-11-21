@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from platewright import labels
 from platewright.core.palette import norm_hex
 from platewright.core.settings import Settings
 from platewright.web.context import Ctx
@@ -17,6 +18,7 @@ SCALARS = {
     "unit_name": str, "period_target": int, "max_plate_hours": float, "assumed_fail_rate": float,
     "reorder_days": float, "operator_group": str, "library_folder": str, "retired_folder": str,
     "summary_weekday": int, "summary_hour": int,
+    "label_printer_host": str, "label_printer_protocol": str, "label_printer_model": str, "label_size": str,
 }
 
 
@@ -101,7 +103,9 @@ def register(app: FastAPI, ctx: Ctx) -> None:
         if not values.get("unit_name"):
             errors.append("unit name can't be empty")
         if not errors:
-            errors = Settings.from_values({**store.settings_values(), **values}).problems()
+            merged = Settings.from_values({**store.settings_values(), **values})
+            errors = merged.problems() + labels.problems(merged.label_printer_host, merged.label_printer_model,
+                                                         merged.label_size, merged.label_printer_protocol)
         if errors:
             draft = Settings.from_values({**store.settings_values(), **{k: v for k, v in values.items()}})
             return ctx.page(request, "settings.html", 400, user=user, nav="settings", s=draft, errors=errors,
