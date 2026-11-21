@@ -38,7 +38,12 @@ and lucide icons).
 - **Stock:** made, adjusted, out and on hand per model; **Out** (one model, or a mixed box split by
   what's on hand, optionally for a demand) and **Adjust** with a reason.
 - **Filament:** palette colors with grams on hand from Bambuddy's inventory, use per day, days left.
-- **Settings:** wording ("part", "toy"), monthly target, printers, palette, operator group.
+- **Labels** on a Brother QL label printer on the network (optional): a **spool label** for any spool
+  in Bambuddy's inventory, drawn by Bambuddy itself at the size of the loaded roll, and a **bag label**
+  on a demand's page for finished parts (the demand, what's in the bag and how many, the model's safety
+  labels, a QR code to the Bambuddy project), with a live preview. Both go straight to the printer.
+- **Settings:** wording ("part", "toy"), monthly target, printers, palette, operator group, label
+  printer.
 - **Sync** every 5 minutes: each finished print is credited to a locked plate version by the
   archive's fingerprint, falling back to the `PLATE-<code>_` file name. The **sidebar badge** is the
   prints to review plus demands at risk.
@@ -64,6 +69,19 @@ unrelated domain the cookie is third-party, and Safari and Firefox drop it.
 
 Server-side calls (the sign-in token exchange, the sync and the badge) can go to Bambuddy over the LAN
 (`PLATEWRIGHT_BAMBUDDY_API_URL`).
+
+## Label printer
+
+Platewright turns each label into Brother raster commands and sends them from the server (the
+container, not the browser), so the server must reach the printer: same LAN, or a firewall rule from
+the server to the printer's address. By default it sends an **IPP print job on port 631**, and the
+printer answers whether it took the job. **Raw, port 9100** is there for printers without IPP; the
+printer gives no answer there, so a failed label only shows as no label. Both print on a QL-810W. Give the printer a fixed address. Any Brother QL model
+`brother_ql` knows works; set the roll that is loaded (a die-cut roll is detected by the printer, a
+continuous one is cut at 90 mm). Settings → Label printer has a test button.
+
+Spool labels come from Bambuddy's label renderer (`POST /inventory/labels/preview`); the API key
+reads them with the same permission it reads the spool inventory with.
 
 ## Setup in Bambuddy (as admin)
 
@@ -103,7 +121,9 @@ Stored in the database. Keys: `unit_name` (e.g. `toy`, `part`), `period_target` 
 month, 0 = none), `max_plate_hours`, `assumed_fail_rate`, `reorder_days`, `operator_group`,
 `printers` (`{"X1C": {"model": "Bambu Lab X1 Carbon", "plates_per_day": 1}}`; `model` exactly as
 the slicer writes it) and `palette` (`{"White": {"hex": "#FFFFFF", "material": "PLA", "slot": "A1"}}`).
-`dev/sample_config.json` is an example. Load them with `PLATEWRIGHT_SEED_FILE` or:
+`label_printer_host`, `label_printer_protocol` (`ipp` or `raw`), `label_printer_model` (e.g. `QL-810W`) and `label_size` (the loaded roll as
+`brother_ql` names it: `29x90` die-cut, `62` continuous, ...) set up the label printer; no host means
+none. `dev/sample_config.json` is an example. Load them with `PLATEWRIGHT_SEED_FILE` or:
 
 ```bash
 docker exec platewright platewright import-config /data/settings.json

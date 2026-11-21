@@ -28,6 +28,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from platewright import config
+from platewright import labels as label_printing
 from platewright.bambuddy.badge import BadgeReporter
 from platewright.bambuddy.client import Bambuddy, BambuddyError, SignInError, authorize_url, new_verifier
 from platewright.bambuddy.sync import SyncLoop
@@ -40,7 +41,7 @@ from platewright.plates import PlateFiles
 from platewright.store.db import Store
 from platewright.web.context import Ctx, LoginRequired, can, safe_next
 from platewright.web.icons import icon
-from platewright.web.routes import admin, demand, hooks, models, plates, production
+from platewright.web.routes import admin, demand, hooks, labels, models, plates, production
 from platewright.web.session import Sessions
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,8 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
                 for f in (HERE / "static").iterdir() if f.is_file()}
     templates.env.globals.update(config=cfg, UNLINKED=UNLINKED, ANY=ANY, can=can, icon=icon,
                                  static=lambda name: f"/static/{name}?v={versions.get(name, '0')}")
+    templates.env.globals.update(label_models=label_printing.models(), label_sizes=label_printing.sizes(),
+                                 label_protocols=label_printing.PROTOCOLS)
     templates.env.filters["norm_hex"] = norm_hex
     templates.env.filters["fmt_date"] = lambda d: dt.date.fromisoformat(d[:10]).strftime("%b %-d") if d else ""
     templates.env.filters["fmt_month"] = fmt_month
@@ -244,8 +247,9 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
         settings = store.settings()
         spools, error = await spools_cache.get(bambuddy.spools)
         rows, other = filament(spools or [], store.run_totals(), settings, dt.date.today())
+        on_shelf = sorted((s for s in spools or [] if not s.get("archived_at")), key=lambda s: s.get("id") or 0)
         return page(request, "filament.html", user=user, nav="filament", rows=rows, other=other, error=error,
-                    loaded=spools is not None)
+                    loaded=spools is not None, spools=on_shelf)
 
     @app.get("/partials/printing", response_class=HTMLResponse)
     async def printing_partial(request: Request):
@@ -281,6 +285,7 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     production.register(app, ctx)
     demand.register(app, ctx)
     admin.register(app, ctx)
+    labels.register(app, ctx)
     hooks.register(app, ctx)
 
     # -- sign in with Bambuddy ------------------------------------------------------------

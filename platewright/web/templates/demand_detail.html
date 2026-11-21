@@ -82,6 +82,33 @@
     </form>
     {% endif %}
 
+    {% if can(user, settings, "operator") %}
+    <form method="post" action="/demand/{{ d.slug }}/label" class="card stack">
+      <h2 class="card-title">{{ icon("tag") }} Bag Label</h2>
+      {% set first_model = (needs | list | first) or ((all_models | first).slug if all_models else "_mixed") %}
+      {% with src = "/demand/" ~ d.slug ~ "/label.png?model=" ~ (first_model | urlencode) %}{% include "_label_preview.html" %}{% endwith %}
+      {# The preview follows the fields; on the grid, not the form, so htmx leaves the form's submit alone. #}
+      <div class="form-grid" hx-get="/demand/{{ d.slug }}/label/preview" hx-include="closest form"
+        hx-trigger="change, input delay:500ms" hx-target="#label-preview" hx-swap="outerHTML">
+        {% call field("What's in the bag", cls="full") %}
+          <select name="model">
+            {% for slug in needs %}<option value="{{ slug }}">{{ models[slug].name if slug in models else slug }}</option>{% endfor %}
+            {% for m in all_models if m.slug not in needs %}<option value="{{ m.slug }}">{{ m.name }}</option>{% endfor %}
+            <option value="_mixed">Mixed {{ settings.unit() }}</option>
+          </select>
+        {% endcall %}
+        {% call field("How many", opt=true) %}<input type="number" name="qty" min="1" inputmode="numeric">{% endcall %}
+        {% call field("Copies") %}<input type="number" name="copies" min="1" max="20" value="1" inputmode="numeric">{% endcall %}
+      </div>
+      {% if settings.labels_on %}
+      <p class="help">The QR code opens {% if d.bambuddy_project_id %}the Bambuddy project{% else %}this demand{% endif %}.</p>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">{{ icon("printer") }} Print Label</button></div>
+      {% else %}
+      <p class="help">No label printer is set up{% if role == "admin" %}: <a href="/settings#labels">add it in Settings</a>{% endif %}.</p>
+      {% endif %}
+    </form>
+    {% endif %}
+
     {% if role == "admin" %}
     <form method="post" action="/demand/{{ d.slug }}/status" class="card stack">
       {% if d.status == "open" %}

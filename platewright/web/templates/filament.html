@@ -38,6 +38,20 @@
     {% endif %}
   </section>
 
+  {% if spools and settings.labels_on and can(user, settings, "operator") %}
+  <section class="card">
+    <h2 class="card-title">{{ icon("tag") }} Spool Labels</h2>
+    <ul class="list">
+      {% for s in spools %}
+      <li class="item"><span class="color"><span class="swatch" data-hex="#{{ (s.rgba or '')[:6] }}"></span>
+        <span><span class="muted">#{{ s.id }}</span> {{ s.brand or "" }} {{ s.material or "" }} {{ s.color_name or "" }}</span></span>
+        <form method="post" action="/filament/spools/{{ s.id }}/label"><button class="btn btn-sm" type="submit">{{ icon("printer") }} Label</button></form></li>
+      {% endfor %}
+    </ul>
+    <p class="help mt">Bambuddy draws the label, as in its Spool Inventory; it goes straight to the label printer.</p>
+  </section>
+  {% endif %}
+
   {% if other %}
   <section class="card">
     <h2 class="card-title">Spools Not in the Palette</h2>

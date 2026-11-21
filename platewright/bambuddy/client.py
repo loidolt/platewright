@@ -156,6 +156,23 @@ class Bambuddy:
     async def spools(self) -> list[dict]:
         return await self.get("/inventory/spools") or []
 
+    async def spool_label(self, spool_id: int, width_mm: float, height_mm: float) -> bytes:
+        """Bambuddy's label for a spool as a PNG at 300 dpi, drawn on a custom layout the size of
+        the label (its preview endpoint renders exactly one label)."""
+        body = {"template": "custom", "spool_id": spool_id, "monochrome": True,
+                "layout": {"page": "letter", "label_w_mm": width_mm, "label_h_mm": height_mm,
+                           "cols": 1, "rows": 1, "top_mm": 0, "left_mm": 0}}
+        try:
+            response = await self._http.post("/inventory/labels/preview", json=body, timeout=20,
+                                              headers={"X-API-Key": self.settings.bambuddy_key})
+        except httpx.HTTPError as exc:
+            raise BambuddyError(f"can't reach Bambuddy ({type(exc).__name__})") from exc
+        if response.status_code != 200 or not response.content.startswith(b"\x89PNG"):
+            hint = " (does the API key have this permission?)" if response.status_code in (401, 403) else ""
+            raise BambuddyError(f"spool label {spool_id}: HTTP {response.status_code} {_error_code(response)}{hint}",
+                                response.status_code)
+        return response.content
+
     async def printers(self) -> list[dict]:
         return await self.get("/printers/") or []
 
