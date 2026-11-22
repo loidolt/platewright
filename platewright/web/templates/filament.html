@@ -7,6 +7,7 @@
 {% endcall %}
 {% if error %}<div class="banner bad" role="alert">{{ icon("wifi-off") }}<p>Bambuddy's spool inventory couldn't be read: {{ error }}</p></div>{% endif %}
 
+<div class="stack-lg">
 <div class="cols">
   <section class="card flush">
     <div class="card-head"><h2 class="card-title">Palette</h2></div>
@@ -63,5 +64,18 @@
     </ul>
   </section>
   {% endif %}
+</div>
+
+<section class="card" aria-labelledby="slots-title">
+  <div class="card-head">
+    <h2 class="card-title" id="slots-title">{{ icon("tag") }} AMS Slots</h2>
+    {{ bb_link("/", "Printers", "btn btn-sm", "printer") }}
+  </div>
+  <p class="help">What each slot holds: the RFID tag the AMS reads and the spool Bambuddy assigned. When Bambuddy
+    links a tag to a spool by itself, it takes the oldest matching spool, which can be a sealed one.</p>
+  <div id="slots" class="mt" hx-get="/partials/slots" hx-trigger="load" hx-swap="innerHTML">
+    <p class="muted">{{ icon("loader-circle") }} Asking Bambuddy…</p>
+  </div>
+</section>
 </div>
 {% endblock %}

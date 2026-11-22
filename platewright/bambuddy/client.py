@@ -173,6 +173,26 @@ class Bambuddy:
                                 response.status_code)
         return response.content
 
+    async def assignments(self) -> list[dict]:
+        """Which spool each AMS slot holds, as Bambuddy's inventory records it."""
+        return await self.get("/inventory/assignments") or []
+
+    async def inventory_write_access(self) -> tuple[bool | None, str]:
+        """Whether the key may change the spool inventory (Bambuddy's "Manage Inventory" permission,
+        ``can_manage_inventory``), asked without changing anything: an empty PATCH of spool 0, which
+        doesn't exist. Bambuddy checks the permission before it looks for the spool, so 404 means
+        yes and 403 means no. Returns True, False or None (couldn't tell), and Bambuddy's words."""
+        try:
+            response = await self._http.patch("/inventory/spools/0", json={},
+                                              headers={"X-API-Key": self.settings.bambuddy_key})
+        except httpx.HTTPError as exc:
+            return None, f"can't reach Bambuddy ({type(exc).__name__})"
+        if response.status_code in (200, 404):
+            return True, ""
+        if response.status_code in (401, 403):
+            return False, _error_code(response)
+        return None, f"HTTP {response.status_code} {_error_code(response)}"
+
     async def printers(self) -> list[dict]:
         return await self.get("/printers/") or []
 

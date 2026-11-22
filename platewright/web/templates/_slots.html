@@ -1,0 +1,82 @@
+{% from "_macros.html" import pill %}
+{% if message %}{% include "_toast.html" %}{% endif %}
+{% if error %}
+<p class="bad">{{ icon("wifi-off") }} {{ error | sentence }}</p>
+{% elif not printers %}
+<p class="muted">No printers in Bambuddy.</p>
+{% else %}
+{% set locked = operator and write is false %}
+{% if locked %}
+<div class="banner" role="note">{{ icon("lock") }}<div><p>Moving a tag needs the API key's <strong>Manage Inventory</strong>
+  permission. In Bambuddy, Settings → API Keys: edit the key Platewright uses and turn it on.</p>
+  {%- if write_error %}<p class="help">Bambuddy said: {{ write_error }}</p>{% endif %}</div></div>
+{% endif %}
+{% for p in printers %}
+<div class="slots-printer">
+  <h3>{{ icon("printer") }} {{ p.name }}</h3>
+  {% if not p.connected %}{{ pill("bad", "Offline", "wifi-off") }}{% endif %}
+  {% if p.checks %}{{ pill("warn", p.checks ~ " to check", "triangle-alert") }}{% endif %}
+</div>
+{% if not p.slots %}
+<p class="muted small">{% if p.connected %}No AMS or external slots reported.{% else %}Bambuddy has no slot data while the printer is offline.{% endif %}</p>
+{% else %}
+<ul class="list">
+  {% for s in p.slots %}
+  {% set sp = s.spool %}
+  <li>
+    <div class="item">
+      <div class="item-main">
+        <div class="item-title slot-title"><span class="slot-label">{{ s.label }}</span>
+          {% if sp %}<span class="color"><span class="swatch" data-hex="#{{ (sp.rgba or '')[:6] }}"></span>
+            <span><span class="muted">#{{ sp.id }}</span> {{ sp.brand or "" }} {{ sp.material or "" }} {{ sp.subtype or "" }} {{ sp.color_name or "" }}</span></span>
+          {% elif s.empty %}<span class="muted">Empty</span>
+          {% else %}<span class="color"><span class="swatch" data-hex="#{{ (s.tray.tray_color or '')[:6] }}"></span>
+            <span>{{ s.tray.tray_sub_brands or s.tray.tray_type or "Unknown filament" }} <span class="muted">· no spool assigned</span></span></span>{% endif %}
+        </div>
+        {% if sp or s.tagged %}
+        <div class="item-meta">
+          {% if sp %}<span>{{ (sp.weight_used or 0) | round | int }} g used</span>
+          <span>origin <code>{{ sp.data_origin or "none" }}</code></span>
+          {% if sp.note %}<span>{{ sp.note }}</span>{% endif %}{% endif %}
+          {% if s.tagged %}<span>{{ icon("tag") }} {% if s.tag_uid %}<code title="Tag UID">{{ s.tag_uid }}</code>{% endif %}
+            {%- if s.tray_uuid %} <code title="Tray UUID {{ s.tray_uuid }}">{{ s.tray_uuid[:8] }}…</code>{% endif %}</span>
+          {% if s.holder and (not sp or s.holder.id != sp.id) %}<span>tag on spool #{{ s.holder.id }}</span>{% endif %}{% endif %}
+        </div>
+        {% endif %}
+        {% if s.check %}<p class="help warn">{{ s.reason }}</p>{% endif %}
+      </div>
+      {% if s.check %}{{ pill("warn", "Check", "triangle-alert") }}{% endif %}
+    </div>
+    {% if s.check and operator %}
+    {% set verb = "Move" if s.holder else "Link" %}
+    <details class="disclosure slot-fix">
+      <summary>{{ icon("tag") }} {{ verb }} Tag to Spool…{{ icon("chevron-down", "chev") }}</summary>
+      <form method="post" action="/filament/slots/move" hx-post="/filament/slots/move" hx-target="#slots" hx-swap="innerHTML">
+        <input type="hidden" name="printer_id" value="{{ p.id }}">
+        <input type="hidden" name="ams_id" value="{{ s.ams_id }}">
+        <input type="hidden" name="tray_id" value="{{ s.tray_id }}">
+        <input type="hidden" name="tag" value="{{ s.tag_uid }}:{{ s.tray_uuid }}">
+        <fieldset {% if locked %}disabled{% endif %}>
+          <legend>Which spool is in {{ s.label }}? Spools that match the tag and carry none:</legend>
+          {% for c in s.candidates %}
+          <label class="check"><input type="radio" name="spool_id" value="{{ c.id }}" required>
+            <span><span class="color"><span class="swatch" data-hex="#{{ (c.rgba or '')[:6] }}"></span>
+              <span><span class="muted">#{{ c.id }}</span> {{ c.brand or "" }} {{ c.material or "" }} {{ c.subtype or "" }} {{ c.color_name or "" }}</span></span>
+              <span class="help">{{ (c.weight_used or 0) | round | int }} g used{% if c.note %} · {{ c.note }}{% endif %}{% if c.created_at %} · added {{ c.created_at | fmt_date }}{% endif %}{% if sp and c.id == sp.id %} · assigned here{% endif %}</span></span></label>
+          {% endfor %}
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">{{ icon("check") }} {{ verb }} Tag</button>
+            <span class="help">{% if locked %}Needs the API key's Manage Inventory permission.
+              {%- elif s.holder %}Spool #{{ s.holder.id }} loses the tag; the spool you choose gets it and this slot.
+              {%- else %}The spool you choose gets the tag and this slot.{% endif %}</span>
+          </div>
+        </fieldset>
+      </form>
+    </details>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endfor %}
+{% endif %}

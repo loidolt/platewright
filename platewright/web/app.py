@@ -3,7 +3,7 @@
 - sign in with Bambuddy inside Bambuddy's frame (connected app, PKCE);
 - follow Bambuddy's theme and open its pages (postMessage, static/app.js);
 - sync finished prints every few minutes and report the badge count after each pass;
-- Today; Plates, Models, Demand, Stock, Filament; Settings (routes/);
+- Today; Plates, Models, Demand, Stock, Filament (with AMS slots); Settings (routes/);
 - refuse to be framed by anything but Bambuddy.
 """
 
@@ -41,7 +41,7 @@ from platewright.plates import PlateFiles
 from platewright.store.db import Store
 from platewright.web.context import Ctx, LoginRequired, can, safe_next
 from platewright.web.icons import icon
-from platewright.web.routes import admin, demand, hooks, labels, models, plates, production
+from platewright.web.routes import admin, demand, hooks, labels, models, plates, production, slots
 from platewright.web.session import Sessions
 
 logger = logging.getLogger(__name__)
@@ -286,6 +286,7 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
     demand.register(app, ctx)
     admin.register(app, ctx)
     labels.register(app, ctx)
+    slots.register(app, ctx)
     hooks.register(app, ctx)
 
     # -- sign in with Bambuddy ------------------------------------------------------------
