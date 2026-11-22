@@ -38,6 +38,12 @@ and lucide icons).
 - **Stock:** made, adjusted, out and on hand per model; **Out** (one model, or a mixed box split by
   what's on hand, optionally for a demand) and **Adjust** with a reason.
 - **Filament:** palette colors with grams on hand from Bambuddy's inventory, use per day, days left.
+  **AMS slots:** every AMS and external slot of each printer with the RFID tag the AMS reads and the
+  spool assigned to it (grams used, note, how Bambuddy got its data). A slot is marked **Check** when
+  Bambuddy linked an unknown Bambu tag to a spool by itself (it takes the oldest untagged spool of the
+  same material and color, which can be a sealed one) and other spools would have matched too.
+  **Move Tag to Spool** puts the tag and the slot on the spool you pick from those (operators and
+  admins; needs the API key's Manage Inventory permission).
 - **Labels** on a Brother QL label printer on the network (optional): a **spool label** for any spool
   in Bambuddy's inventory, drawn by Bambuddy itself at the size of the loaded roll, and a **bag label**
   on a demand's page for finished parts (the demand, what's in the bag and how many, the model's safety
@@ -83,6 +89,18 @@ continuous one is cut at 90 mm). Settings → Label printer has a test button.
 Spool labels come from Bambuddy's label renderer (`POST /inventory/labels/preview`); the API key
 reads them with the same permission it reads the spool inventory with.
 
+## AMS slots and RFID tags
+
+Bambuddy v1.3.1 has no call that moves a tag, and in built-in inventory mode its UI can't link one.
+Move Tag to Spool makes the calls by hand, in this order: clear the tag from the spool that carries
+it (`PATCH /inventory/spools/{id}`), assign the chosen spool to the slot (`POST /inventory/assignments`,
+which also takes it out of any other slot), link the tray's tag to it
+(`PATCH /inventory/spools/{id}/link-tag`) and, for a Bambu tag, set its tag type. It then reads the
+slots again. When a step is refused, the notice says which and what was done before it; a tag left
+on no spool shows as **Check** with Link Tag to Spool. Whether the key may write the inventory is
+asked with an empty `PATCH` of spool 0, which doesn't exist: Bambuddy answers 403 without the
+permission, 404 with it.
+
 ## Setup in Bambuddy (as admin)
 
 1. **Connected app:** Settings → API Keys → Connected Apps. Name `Platewright`, callback URL
@@ -90,7 +108,8 @@ reads them with the same permission it reads the spool inventory with.
    only once.
 2. **API key:** Settings → API Keys → Create Key with **Read Status**, **Send notifications**,
    **Manage Queue**, **Manage Library** and **Manage Projects**, nothing else. Create it as an admin:
-   Send notifications needs an owner who may update notifications.
+   Send notifications needs an owner who may update notifications. Add **Manage Inventory** to move
+   RFID tags between spools from the AMS slots panel; without it the panel only shows.
 3. **Sidebar link:** Settings → General → Sidebar → External links. URL exactly
    `PLATEWRIGHT_PUBLIC_URL` (the badge is matched to the link by scheme, host, port and path), and
    **Open in new tab off**.
@@ -151,9 +170,10 @@ uv run pytest
 
 Try it locally against a stand-in Bambuddy. `dev/fake_bambuddy.py` imitates only what Platewright
 uses: the framing page, theme and navigate messages, an already-granted sign-in, the token exchange,
-the badge, and sample print log, archives, spools, printers, File Manager, MakerWorld, projects and
-queue (nothing prints). Its sidebar switches the theme (mode, style, background, accent) and who is
-signed in (admin, operator, viewer).
+the badge, and sample print log, archives, spools, printers with AMS slots (A1 on the P1S has a tag
+linked to the wrong spool), File Manager, MakerWorld, projects and queue (nothing prints). Its
+sidebar switches the theme (mode, style, background, accent), who is signed in (admin, operator,
+viewer) and whether the API key may write the inventory. Restart it to undo a tag move.
 
 1. Seed a dev database (`./data`) with sample settings, models, plates, runs, demand and stock. It
    also writes `data/fake_bambuddy.json` (the plates' fingerprints, so the stand-in's prints match

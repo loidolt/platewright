@@ -3,7 +3,9 @@
 It imitates only what Platewright touches: the sidebar page that frames the app
 (sandbox, theme and navigate messages), /connect/authorize (approves at once,
 like an already-granted user), the token exchange, the badge endpoint, and sample
-print log, archives, spools, printers, File Manager, MakerWorld, projects and queue.
+print log, archives, spools and their AMS slots (with a wrong RFID auto-link to fix), printers,
+File Manager, MakerWorld, projects and queue. The sidebar also makes the API key read-only for the
+inventory (no Manage Inventory permission).
 
     uv run uvicorn dev.fake_bambuddy:app --port 3700
     PLATEWRIGHT_DEV=1 PLATEWRIGHT_COOKIE_SECURE=0 PLATEWRIGHT_PUBLIC_URL=http://localhost:3710 \
@@ -38,7 +40,8 @@ USERS = {
     "viewer": {"id": 3, "username": "devviewer", "email": "view@example.test", "is_admin": False,
                "groups": [], "permissions": []},
 }
-current = {"role": os.environ.get("FAKE_ROLE", "admin")}
+current = {"role": os.environ.get("FAKE_ROLE", "admin"),
+           "inventory": "read-only" if os.environ.get("FAKE_INVENTORY") == "read-only" else "writable"}
 
 app = FastAPI()
 codes: dict[str, str] = {}
@@ -50,6 +53,7 @@ OPTIONS = {
     "background": ["neutral", "warm", "cool", "oled", "slate", "forest"],
     "accent": ["green", "teal", "blue", "orange", "purple", "red"],
     "role": list(USERS),
+    "inventory": ["writable", "read-only"],
 }
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
@@ -84,6 +88,11 @@ const send = () => {
 };
 f.addEventListener('load', send);
 ['mode','style','background','accent'].forEach(k => pick(k).addEventListener('change', send));
+pick('inventory').addEventListener('change', async () => {
+  await fetch('/fake/inventory', {method: 'POST', headers: {'content-type': 'application/json'},
+                                  body: JSON.stringify({inventory: pick('inventory').value})});
+  f.src = origin + '/filament';
+});
 pick('role').addEventListener('change', async () => {
   await fetch('/fake/role', {method: 'POST', headers: {'content-type': 'application/json'},
                              body: JSON.stringify({role: pick('role').value})});
@@ -105,7 +114,7 @@ poll(); setInterval(poll, 3000);
 def _selects() -> str:
     out = []
     for name, values in OPTIONS.items():
-        opts = "".join(f"<option{' selected' if name == 'role' and v == current['role'] else ''}>{v}</option>"
+        opts = "".join(f"<option{' selected' if v == current.get(name) else ''}>{v}</option>"
                        for v in values)
         out.append(f'<label>{name} <select id="{name}">{opts}</select></label>')
     return "\n ".join(out)
@@ -127,6 +136,14 @@ def set_role(body: dict = Body(...)):
         raise HTTPException(400)
     current["role"] = body["role"]
     return {"role": current["role"]}
+
+
+@app.post("/fake/inventory")
+def set_inventory(body: dict = Body(...)):
+    if body.get("inventory") not in OPTIONS["inventory"]:
+        raise HTTPException(400)
+    current["inventory"] = body["inventory"]
+    return {"inventory": current["inventory"]}
 
 
 @app.get("/connect/authorize")
@@ -221,19 +238,102 @@ def archive(archive_id: int, x_api_key: str = Header("")):
             "content_hash": _shas().get(code, "") if code else hashlib.sha256(name.encode()).hexdigest()}
 
 
+# Spools as Bambuddy v1.3.1 returns them (the fields Platewright reads). A1 on the P1S shows the
+# wrong RFID auto-link: Bambuddy gave the tag to the oldest black spool (#12, still sealed); the
+# spool in the AMS is #30, and #31 would have matched too.
+SPOOLS = [
+    {"id": 1, "material": "PLA", "subtype": "Basic", "rgba": "9D432CFF", "brand": "Bambu", "color_name": "Brown",
+     "label_weight": 1000, "weight_used": 380, "tag_uid": "A1B2C3D4E5F60708", "tray_uuid": "11112222333344445555666677778888",
+     "data_origin": "rfid_auto", "tag_type": "bambulab", "created_at": "2026-09-02T10:00:00"},
+    {"id": 2, "material": "PLA", "subtype": "Basic", "rgba": "FFFFFFFF", "brand": "Bambu", "color_name": "White",
+     "label_weight": 1000, "weight_used": 900, "tag_uid": "0F1E2D3C4B5A6978", "tray_uuid": "AAAABBBBCCCCDDDDEEEEFFFF00001111",
+     "data_origin": "rfid_auto", "tag_type": "bambulab", "created_at": "2026-09-02T10:05:00"},
+    {"id": 4, "material": "PLA", "rgba": "C12E1FFF", "brand": "Bambu", "color_name": "Red",
+     "label_weight": 1000, "weight_used": 200, "data_origin": "manual", "created_at": "2026-09-10T09:00:00"},
+    {"id": 3, "material": "PETG", "rgba": "2E7D32FF", "brand": "Elegoo", "color_name": "Green",
+     "label_weight": 1000, "weight_used": 120, "data_origin": "manual", "created_at": "2026-09-12T09:00:00"},
+    {"id": 12, "material": "PLA", "subtype": "Basic", "rgba": "000000FF", "brand": "Bambu Lab", "color_name": "Black",
+     "label_weight": 1000, "weight_used": 0, "note": "sealed, shelf 2", "tag_uid": "04A1B2C3D4E5F6", "tray_uuid": "9F8E7D6C5B4A39281706F5E4D3C2B1A0",
+     "data_origin": "rfid_linked", "tag_type": "bambulab", "created_at": "2026-10-01T08:00:00"},
+    {"id": 30, "material": "PLA", "subtype": "Basic", "rgba": "000000FF", "brand": "Bambu Lab", "color_name": "Black",
+     "label_weight": 1000, "weight_used": 412, "note": "opened Nov 3", "data_origin": "manual",
+     "created_at": "2026-10-20T08:00:00"},
+    {"id": 31, "material": "PLA", "rgba": "000000FF", "brand": None, "color_name": "Black",
+     "label_weight": 1000, "weight_used": 0, "note": "quick add", "data_origin": "manual",
+     "created_at": "2026-11-01T08:00:00"},
+]
+TAG_FIELDS = ("tag_uid", "tray_uuid", "data_origin", "tag_type")
+ASSIGNMENTS = [  # (printer, ams, tray) -> spool
+    {"printer_id": 1, "ams_id": 0, "tray_id": 0, "spool_id": 1},
+    {"printer_id": 1, "ams_id": 0, "tray_id": 1, "spool_id": 2},
+    {"printer_id": 2, "ams_id": 0, "tray_id": 0, "spool_id": 12},
+    {"printer_id": 2, "ams_id": 0, "tray_id": 2, "spool_id": 4},
+    {"printer_id": 2, "ams_id": 255, "tray_id": 0, "spool_id": 3},
+]
+
+
+def _spool(spool_id: int) -> dict:
+    s = next((s for s in SPOOLS if s["id"] == spool_id and not s.get("archived_at")), None)
+    if s is None:
+        raise HTTPException(404, "Spool not found")
+    return s
+
+
+def _inventory_write(x_api_key: str) -> None:
+    _key(x_api_key)
+    if current["inventory"] != "writable":
+        raise HTTPException(403, "API key does not have 'can_manage_inventory' permission")
+
+
 @app.get("/api/v1/inventory/spools")
 def spools(x_api_key: str = Header("")):
     _key(x_api_key)
-    return [
-        {"id": 1, "material": "PLA", "rgba": "9D432CFF", "brand": "Bambu", "color_name": "Brown",
-         "label_weight": 1000, "weight_used": 380},
-        {"id": 2, "material": "PLA", "rgba": "FFFFFFFF", "brand": "Bambu", "color_name": "White",
-         "label_weight": 1000, "weight_used": 900},
-        {"id": 4, "material": "PLA", "rgba": "C12E1FFF", "brand": "Bambu", "color_name": "Red",
-         "label_weight": 1000, "weight_used": 200},
-        {"id": 3, "material": "PETG", "rgba": "2E7D32FF", "brand": "Elegoo", "color_name": "Green",
-         "label_weight": 1000, "weight_used": 120},
-    ]
+    return [{f: None for f in TAG_FIELDS} | {"note": None, "subtype": None, "archived_at": None} | s
+            for s in SPOOLS if not s.get("archived_at")]
+
+
+@app.patch("/api/v1/inventory/spools/{spool_id}")
+def update_spool(spool_id: int, body: dict = Body(...), x_api_key: str = Header("")):
+    _inventory_write(x_api_key)  # Bambuddy checks the permission before it looks for the spool
+    s = _spool(spool_id)
+    s.update(body)
+    return s
+
+
+@app.patch("/api/v1/inventory/spools/{spool_id}/link-tag")
+def link_tag(spool_id: int, body: dict = Body(...), x_api_key: str = Header("")):
+    _inventory_write(x_api_key)
+    s = _spool(spool_id)
+    for f in ("tag_uid", "tray_uuid"):
+        value = (body.get(f) or "").upper() or None
+        holder = next((o for o in SPOOLS if value and o["id"] != spool_id and not o.get("archived_at")
+                       and (o.get(f) or "").upper() == value), None)
+        if holder:
+            raise HTTPException(409, {"error": "tag_already_linked", "field": f, "spool_id": holder["id"]})
+        if body.get(f) is not None:
+            s[f] = value
+    s["data_origin"] = body.get("data_origin") or "nfc_link"
+    if body.get("tag_type"):
+        s["tag_type"] = body["tag_type"]
+    return s
+
+
+@app.get("/api/v1/inventory/assignments")
+def assignments(x_api_key: str = Header("")):
+    _key(x_api_key)
+    return [{"id": i + 1, **a, "printer_name": PRINTERS[a["printer_id"]][0],
+             "spool": next((s for s in SPOOLS if s["id"] == a["spool_id"]), None)} for i, a in enumerate(ASSIGNMENTS)]
+
+
+@app.post("/api/v1/inventory/assignments")
+def assign(body: dict = Body(...), x_api_key: str = Header("")):
+    _inventory_write(x_api_key)
+    _spool(body["spool_id"])
+    slot = (body["printer_id"], body["ams_id"], body["tray_id"])
+    ASSIGNMENTS[:] = [a for a in ASSIGNMENTS if (a["printer_id"], a["ams_id"], a["tray_id"]) != slot
+                      and not (body.get("move") and a["spool_id"] == body["spool_id"])]
+    ASSIGNMENTS.append({"printer_id": slot[0], "ams_id": slot[1], "tray_id": slot[2], "spool_id": body["spool_id"]})
+    return {"id": len(ASSIGNMENTS), **ASSIGNMENTS[-1]}
 
 
 @app.post("/api/v1/inventory/labels/preview")
@@ -244,7 +344,7 @@ def spool_label(body: dict = Body(...), x_api_key: str = Header("")):
 
     layout = body.get("layout") or {}
     w, h = (round(float(layout.get(k, d)) * 300 / 25.4) for k, d in (("label_w_mm", 62), ("label_h_mm", 29)))
-    spool = next((s for s in spools(x_api_key) if s["id"] == body.get("spool_id")), None)
+    spool = next((s for s in SPOOLS if s["id"] == body.get("spool_id")), None)
     if spool is None:
         raise HTTPException(404, "Spool not found")
     spec = labels.LabelSize("fake", "fake", w, h, False, h)
@@ -253,11 +353,30 @@ def spool_label(body: dict = Body(...), x_api_key: str = Header("")):
     return Response(labels.png(img), media_type="image/png")
 
 
+def _tray(tray_id: int, spool_id: int | None = None, sub: str = "PLA Basic", id_name: str = "", **extra) -> dict:
+    """An AMS tray as Bambuddy's printer status reports it; the loaded spool's tag and color."""
+    if spool_id is None:
+        return {"id": tray_id, "tray_type": "", "tray_color": "", "tag_uid": "0" * 16, "tray_uuid": "0" * 32,
+                "state": 9, "remain": 0, **extra}
+    s = next(s for s in SPOOLS if s["id"] == spool_id)
+    return {"id": tray_id, "tray_type": s["material"], "tray_sub_brands": sub, "tray_color": s["rgba"],
+            "tray_id_name": id_name, "tag_uid": s.get("tag_uid") or "0" * 16,
+            "tray_uuid": s.get("tray_uuid") or "0" * 32, "state": 11, "remain": 60, **extra}
+
+
+# The tags the AMS reads stay the spools' own, whatever Bambuddy's inventory says: A1 on the P1S
+# holds spool #30, whose tag Bambuddy linked to #12.
+_TAG_12 = next(s for s in SPOOLS if s["id"] == 12)
 PRINTERS = {
     1: ("X1C", {"connected": True, "state": "RUNNING", "subtask_name": "PLATE-N_44up", "progress": 63.0,
-                "remaining_time": 512}),
-    2: ("P1S", {"connected": True, "state": "IDLE"}),
-    3: ("A1 mini", {"connected": False, "state": "IDLE"}),
+                "remaining_time": 512,
+                "ams": [{"id": 0, "tray": [_tray(0, 1), _tray(1, 2), _tray(2), _tray(3)]}], "vt_tray": []}),
+    2: ("P1S", {"connected": True, "state": "IDLE",
+                "ams": [{"id": 0, "tray": [
+                    _tray(0, 30, "PLA Basic", "A00-K0") | {"tag_uid": _TAG_12["tag_uid"], "tray_uuid": _TAG_12["tray_uuid"]},
+                    _tray(1), _tray(2, 4, ""), _tray(3)]}],
+                "vt_tray": [_tray(254, 3, "")]}),
+    3: ("A1 mini", {"connected": False, "state": "IDLE", "ams": [], "vt_tray": []}),
 }
 
 
