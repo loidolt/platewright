@@ -42,8 +42,9 @@ and lucide icons).
   spool assigned to it (grams used, note, how Bambuddy got its data). A slot is marked **Check** when
   Bambuddy linked an unknown Bambu tag to a spool by itself (it takes the oldest untagged spool of the
   same material and color, which can be a sealed one) and other spools would have matched too.
-  **Move Tag to Spool** puts the tag and the slot on the spool you pick from those (operators and
-  admins; needs the API key's Manage Inventory permission).
+  **Move Tag to Spool** puts the tag and the slot on the spool you pick from those; **This Is Right**
+  keeps it on the spool Bambuddy picked and clears the mark (both for operators and admins, and
+  both need the API key's Manage Inventory permission).
 - **Labels** on a Brother QL label printer on the network (optional): a **spool label** for any spool
   in Bambuddy's inventory, drawn by Bambuddy itself at the size of the loaded roll, and a **bag label**
   on a demand's page for finished parts (the demand, what's in the bag and how many, the model's safety
@@ -100,6 +101,11 @@ slots again. When a step is refused, the notice says which and what was done bef
 on no spool shows as **Check** with Link Tag to Spool. Whether the key may write the inventory is
 asked with an empty `PATCH` of spool 0, which doesn't exist: Bambuddy answers 403 without the
 permission, 404 with it.
+
+This Is Right links the tag again to the spool that carries it (`PATCH /inventory/spools/{id}/link-tag`,
+with the tag type for a Bambu tag), after assigning that spool to the slot if another one is there.
+Bambuddy then records the link as made by hand (`data_origin` "nfc_link", link-tag's default),
+so the slot is no longer marked.
 
 ## Setup in Bambuddy (as admin)
 
