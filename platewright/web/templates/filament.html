@@ -2,15 +2,16 @@
 {% from "_macros.html" import bb_link, page_head, pill %}
 {% block title %}Filament · Platewright{% endblock %}
 {% block content %}
-{% call page_head("Filament", "disc-3", "Your palette colors, with what Bambuddy's spool inventory holds of each.") %}
+{% call page_head("Filament", "disc-3", "Your palette colors, what's in the AMS, and every spool in Bambuddy's inventory.") %}
   {{ bb_link("/inventory", "Spool Inventory", "btn", "disc-3") }}
 {% endcall %}
 {% if error %}<div class="banner bad" role="alert">{{ icon("wifi-off") }}<p>Bambuddy's spool inventory couldn't be read: {{ error }}</p></div>{% endif %}
+{% set labels = settings.labels_on and can(user, settings, "operator") %}
 
 <div class="stack-lg">
 <div class="cols">
-  <section class="card flush">
-    <div class="card-head"><h2 class="card-title">Palette</h2></div>
+  <section class="card flush" aria-labelledby="palette-title">
+    <div class="card-head"><h2 class="card-title" id="palette-title">Palette</h2></div>
     {% if not rows %}
     <div class="card-foot"><p class="muted">No palette set up.{% if role == "admin" %} <a href="/settings#palette">Add colors in Settings.</a>{% endif %}</p></div>
     {% else %}
@@ -39,43 +40,46 @@
     {% endif %}
   </section>
 
-  {% if spools and settings.labels_on and can(user, settings, "operator") %}
-  <section class="card">
-    <h2 class="card-title">{{ icon("tag") }} Spool Labels</h2>
-    <ul class="list">
-      {% for s in spools %}
-      <li class="item"><span class="color"><span class="swatch" data-hex="#{{ (s.rgba or '')[:6] }}"></span>
-        <span><span class="muted">#{{ s.id }}</span> {{ s.brand or "" }} {{ s.material or "" }} {{ s.color_name or "" }}</span></span>
-        <form method="post" action="/filament/spools/{{ s.id }}/label" hx-post="/filament/spools/{{ s.id }}/label" hx-swap="none"><button class="btn btn-sm" type="submit">{{ icon("printer") }} Label</button></form></li>
-      {% endfor %}
-    </ul>
-    <p class="help mt">Bambuddy draws the label, as in its Spool Inventory; it goes straight to the label printer.</p>
+  <section class="card" aria-labelledby="slots-title">
+    <div class="card-head">
+      <h2 class="card-title" id="slots-title">{{ icon("tag") }} AMS Slots</h2>
+      {{ bb_link("/", "Printers", "btn btn-sm", "printer") }}
+    </div>
+    <p class="help">The RFID tag each slot reads and the spool Bambuddy assigned. When Bambuddy links a tag to a
+      spool by itself, it takes the oldest matching spool, which can be a sealed one.</p>
+    <div id="slots" class="mt" hx-get="/partials/slots" hx-trigger="load" hx-swap="innerHTML">
+      <p class="muted">{{ icon("loader-circle") }} Asking Bambuddy…</p>
+    </div>
   </section>
-  {% endif %}
-
-  {% if other %}
-  <section class="card">
-    <h2 class="card-title">Spools Not in the Palette</h2>
-    <ul class="list">
-      {% for s in other %}
-      <li class="item"><span class="color"><span class="swatch" data-hex="#{{ (s.rgba or '')[:6] }}"></span>{{ s.brand or "" }} {{ s.material or "" }} {{ s.color_name or "" }}
-        <span class="help">#{{ (s.rgba or '')[:6] }}</span></span><span>{{ s.grams_left | int }} g</span></li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
 </div>
 
-<section class="card" aria-labelledby="slots-title">
+{% if spools %}
+<section class="card flush" aria-labelledby="spools-title">
   <div class="card-head">
-    <h2 class="card-title" id="slots-title">{{ icon("tag") }} AMS Slots</h2>
-    {{ bb_link("/", "Printers", "btn btn-sm", "printer") }}
+    <h2 class="card-title" id="spools-title">{{ icon("disc-3") }} Spools</h2>
+    <span class="muted small">{{ spools | length }} in Bambuddy's inventory</span>
   </div>
-  <p class="help">What each slot holds: the RFID tag the AMS reads and the spool Bambuddy assigned. When Bambuddy
-    links a tag to a spool by itself, it takes the oldest matching spool, which can be a sealed one.</p>
-  <div id="slots" class="mt" hx-get="/partials/slots" hx-trigger="load" hx-swap="innerHTML">
-    <p class="muted">{{ icon("loader-circle") }} Asking Bambuddy…</p>
+  <div class="table-wrap">
+  <table class="table spools">
+    <thead><tr><th>Spool</th><th class="num">Left</th><th class="wide-only">Palette color</th>
+      {%- if labels %}<th><span class="sr-only">Label</span></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for s in spools %}
+      <tr>
+        <td><span class="color"><span class="swatch" data-hex="#{{ (s.rgba or '')[:6] }}"></span>
+          <span><span class="muted">#{{ s.id }}</span> {{ s.brand or "" }} {{ s.material or "" }} {{ s.subtype or "" }} {{ s.color_name or "" }}</span></span>
+          <span class="sub">{% if s.note %}{{ s.note }}{% else %}#{{ (s.rgba or '')[:6] }}{% endif %}</span></td>
+        <td class="num">{{ [s.grams_left, 0] | max | int }} g</td>
+        <td class="wide-only">{% if s.palette %}{{ s.palette }}{% else %}<span class="muted">Not in palette</span>{% endif %}</td>
+        {% if labels %}<td class="num"><form method="post" action="/filament/spools/{{ s.id }}/label" hx-post="/filament/spools/{{ s.id }}/label" hx-swap="none">
+          <button class="btn btn-sm" type="submit" aria-label="Print a label for spool #{{ s.id }}">{{ icon("printer") }} Label</button></form></td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
   </div>
+  {% if labels %}<div class="card-foot"><p class="help">Label: Bambuddy draws it, as in its Spool Inventory, and it goes straight to the label printer.</p></div>{% endif %}
 </section>
+{% endif %}
 </div>
 {% endblock %}

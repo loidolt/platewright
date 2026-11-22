@@ -49,6 +49,17 @@
     </div>
     {% if s.check and operator %}
     {% set verb = "Move" if s.holder else "Link" %}
+    {% if s.holder %}
+    <form class="slot-confirm" method="post" action="/filament/slots/confirm" hx-post="/filament/slots/confirm" hx-target="#slots" hx-swap="innerHTML">
+      <input type="hidden" name="printer_id" value="{{ p.id }}">
+      <input type="hidden" name="ams_id" value="{{ s.ams_id }}">
+      <input type="hidden" name="tray_id" value="{{ s.tray_id }}">
+      <input type="hidden" name="tag" value="{{ s.tag_uid }}:{{ s.tray_uuid }}">
+      <input type="hidden" name="spool_id" value="{{ s.holder.id }}">
+      <button class="btn btn-sm" type="submit"{% if locked %} disabled{% endif %}>{{ icon("check") }} This Is Right</button>
+      <span class="help">Spool #{{ s.holder.id }} is the one in {{ s.label }}: keep the tag on it{% if not sp or sp.id != s.holder.id %} and assign it here{% endif %}, and stop flagging this slot.</span>
+    </form>
+    {% endif %}
     <details class="disclosure slot-fix">
       <summary>{{ icon("tag") }} {{ verb }} Tag to Spool…{{ icon("chevron-down", "chev") }}</summary>
       <form method="post" action="/filament/slots/move" hx-post="/filament/slots/move" hx-target="#slots" hx-swap="innerHTML">

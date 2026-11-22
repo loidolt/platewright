@@ -110,6 +110,8 @@ class SlotsBambuddy(FakeBambuddy):
                 if body.get(f) is not None:
                     s[f] = body[f]
             s["data_origin"] = body.get("data_origin") or "nfc_link"
+            if body.get("tag_type"):
+                s["tag_type"] = body["tag_type"]
             return httpx.Response(200, json=s)
         s.update(body)
         return httpx.Response(200, json=s)
@@ -131,6 +133,11 @@ def client(fake, tmp_path):
 
 def move(client, spool_id=30, tag=f"{TAG}:{UUID}", tray_id=0, ams_id=0, htmx=True):
     return client.post("/filament/slots/move", headers={"HX-Request": "true"} if htmx else {},
+                       data={"printer_id": 1, "ams_id": ams_id, "tray_id": tray_id, "tag": tag, "spool_id": spool_id})
+
+
+def confirm(client, spool_id=12, tag=f"{TAG}:{UUID}", tray_id=0, ams_id=0, htmx=True):
+    return client.post("/filament/slots/confirm", headers={"HX-Request": "true"} if htmx else {},
                        data={"printer_id": 1, "ams_id": ams_id, "tray_id": tray_id, "tag": tag, "spool_id": spool_id})
 
 
@@ -212,7 +219,7 @@ def test_panel_lists_slots_and_offers_the_candidates(client, fake):
     assert "X1C" in html and ">A1<" in html and ">A2<" in html and ">Ext<" in html
     assert TAG in html and UUID[:8] in html and "rfid_linked" in html and "sealed" in html
     assert "1 to check" in html and "Move Tag to Spool" in html
-    radios = [int(v) for v in re.findall(r'name="spool_id" value="(\d+)"', html)]
+    radios = [int(v) for v in re.findall(r'type="radio" name="spool_id" value="(\d+)"', html)]
     assert radios == [37, 30, 31]
     assert "412 g used" in html and "opened Nov 3" in html
     assert "Manage Inventory</strong>" not in html and "<fieldset disabled" not in html
@@ -316,3 +323,78 @@ def test_cross_origin_move_is_refused(client, fake):
     r = client.post("/filament/slots/move", headers={"Origin": "https://evil.example"},
                     data={"printer_id": 1, "ams_id": 0, "tray_id": 0, "tag": f"{TAG}:{UUID}", "spool_id": 30})
     assert r.status_code == 403 and fake.writes == []
+
+
+# -- "This Is Right" ----------------------------------------------------------------------------
+
+def test_panel_offers_this_is_right_for_the_spool_bambuddy_picked(client, fake):
+    html = client.get("/partials/slots").text
+    assert "This Is Right" in html and 'action="/filament/slots/confirm"' in html
+    assert 'name="spool_id" value="12"' in html and "Spool #12 is the one in A1: keep the tag on it, and" in html
+
+
+def test_this_is_right_keeps_the_tag_with_one_call(client, fake):
+    r = confirm(client)
+    assert r.status_code == 200
+    assert fake.writes == [("PATCH", "/inventory/spools/12/link-tag",
+                            {"tag_uid": TAG, "tray_uuid": UUID, "tag_type": "bambulab"})]
+    assert "Spool #12 keeps the tag in X1C A1" in r.text
+    assert "1 to check" not in r.text and "This Is Right" not in r.text and "nfc_link" in r.text
+    kept = fake.find(12)
+    assert (kept["tag_uid"], kept["tray_uuid"], kept["data_origin"], kept["tag_type"]) == (TAG, UUID, "nfc_link", "bambulab")
+    assert {(a["ams_id"], a["tray_id"]): a["spool_id"] for a in fake.assignments}[(0, 0)] == 12
+
+
+def test_this_is_right_assigns_the_spool_when_another_is_in_the_slot(client, fake):
+    fake.assignments[0]["spool_id"] = 30
+    html = client.get("/partials/slots").text
+    assert "keep the tag on it and assign it here" in html
+    confirm(client)
+    assert [w[1] for w in fake.writes] == ["/inventory/assignments", "/inventory/spools/12/link-tag"]
+    assert fake.writes[0][2] == {"spool_id": 12, "printer_id": 1, "ams_id": 0, "tray_id": 0, "move": True}
+    assert {(a["ams_id"], a["tray_id"]): a["spool_id"] for a in fake.assignments}[(0, 0)] == 12
+
+
+def test_this_is_right_without_htmx_goes_back_to_the_page(client, fake):
+    r = confirm(client, htmx=False)
+    where = r.headers["location"]
+    assert r.status_code == 303 and where.startswith("/filament?notice=Spool+%2312+keeps+the+tag") and where.endswith("#slots")
+
+
+def test_this_is_right_is_not_offered_for_a_tag_no_spool_carries(client, fake):
+    fake.find(12).update(tag_uid=None, tray_uuid=None, data_origin=None, tag_type=None)
+    html = client.get("/partials/slots").text
+    assert "Link Tag to Spool" in html and "This Is Right" not in html
+    assert "This slot changed" in confirm(client).text and fake.writes == []
+
+
+def test_this_is_right_refuses_a_stale_page(client, fake):
+    assert "This slot changed" in confirm(client, spool_id=30).text  # not the spool with the tag
+    assert "This slot changed" in confirm(client, tag="DEADBEEF:").text
+    fake.find(12)["data_origin"] = "nfc_link"  # confirmed meanwhile: nothing to check any more
+    assert "This slot changed" in confirm(client).text
+    assert fake.writes == []
+
+
+def test_this_is_right_needs_manage_inventory(client, fake):
+    fake.can_write = False
+    html = client.get("/partials/slots").text
+    assert re.search(r'type="submit" disabled>[^<]*<svg.*?</svg>\s*This Is Right', html, re.S)
+    assert "can't change Bambuddy's inventory" in html_.unescape(confirm(client).text) and fake.writes == []
+
+
+def test_this_is_right_says_what_bambuddy_refused(client, fake):
+    fake.assignments[0]["spool_id"] = 30
+    fake.refuse = "/api/v1/inventory/spools/12/link-tag"
+    r = confirm(client)
+    assert "Bambuddy refused to keep the tag on spool #12" in r.text
+    assert "Done before that: assign spool #12 to slot A1." in r.text
+
+
+def test_viewers_cannot_confirm(client, fake, monkeypatch):
+    import tests.test_web as web
+    monkeypatch.setattr(web, "USER", {**web.USER, "is_admin": False, "groups": []})
+    client.cookies.clear()
+    sign_in(client, fake)
+    assert "This Is Right" not in client.get("/partials/slots").text
+    assert confirm(client).status_code == 403 and fake.writes == []
