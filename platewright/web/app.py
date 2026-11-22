@@ -35,7 +35,7 @@ from platewright.bambuddy.sync import SyncLoop
 from platewright.config import Settings as AppConfig
 from platewright.core.mix import ANY, UNLINKED
 from platewright.core.palette import norm_hex
-from platewright.core.plan import demand_plan, fail_rate, filament, month_status
+from platewright.core.plan import demand_plan, fail_rate, filament, month_status, shelf
 from platewright.messages import Messenger
 from platewright.plates import PlateFiles
 from platewright.store.db import Store
@@ -246,10 +246,9 @@ def create_app(app_config: AppConfig | None = None, transport: httpx.AsyncBaseTr
         user = ctx.user(request)
         settings = store.settings()
         spools, error = await spools_cache.get(bambuddy.spools)
-        rows, other = filament(spools or [], store.run_totals(), settings, dt.date.today())
-        on_shelf = sorted((s for s in spools or [] if not s.get("archived_at")), key=lambda s: s.get("id") or 0)
-        return page(request, "filament.html", user=user, nav="filament", rows=rows, other=other, error=error,
-                    loaded=spools is not None, spools=on_shelf)
+        rows, _ = filament(spools or [], store.run_totals(), settings, dt.date.today())
+        return page(request, "filament.html", user=user, nav="filament", rows=rows, error=error,
+                    loaded=spools is not None, spools=shelf(spools or [], settings))
 
     @app.get("/partials/printing", response_class=HTMLResponse)
     async def printing_partial(request: Request):

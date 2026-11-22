@@ -230,3 +230,14 @@ def filament(spools: list[dict], runs: list[RunTotals], settings: Settings,
                         per_day=round(burn.get(name, 0), 1))
             for name, info in settings.palette.items()]
     return rows, other
+
+
+def shelf(spools: list[dict], settings: Settings) -> list[dict]:
+    """Every spool that isn't archived, by id, with the grams left and the palette color it counts
+    toward (None when it matches none)."""
+    out = []
+    for s in sorted((s for s in spools if not s.get("archived_at")), key=lambda s: s.get("id") or 0):
+        name, _ = match_palette("#" + (s.get("rgba") or "")[:6], s.get("material") or "", settings.palette)
+        left = float(s.get("label_weight") or 1000) - float(s.get("weight_used") or 0)
+        out.append({**s, "grams_left": left, "palette": name})
+    return out

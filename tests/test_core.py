@@ -9,7 +9,7 @@ from platewright.core.mix import ANY, UNLINKED, distribute, fit_mix, good_by_mod
 from platewright.core.names import (ModelNames, base_object_name, build_index, lookup, lookup_object,
                                     model_slug, norm_key)
 from platewright.core.palette import match_palette, norm_hex, validate_palette
-from platewright.core.plan import ActivePlate, Demand, RunTotals, demand_plan, filament, month_status
+from platewright.core.plan import ActivePlate, Demand, RunTotals, demand_plan, filament, month_status, shelf
 from platewright.core.plates import Model, check_plate
 from platewright.core.runs import VersionRef, match_version, synced_run
 from platewright.core.settings import Settings, from_toys_config
@@ -225,6 +225,14 @@ def test_filament_days_left():
     short = [RunTotals("2026-11-18", 44, 44, filaments={"Body-Brown": 300.0})]
     rows, _ = filament(spools, short, SETTINGS, dt.date(2026, 11, 20))
     assert next(r for r in rows if r.color == "Body-Brown").per_day == 100.0
+
+
+def test_shelf_lists_spools_by_id_with_grams_left_and_palette_color():
+    spools = [{"id": 9, "rgba": "FF00FFFF", "material": "PLA", "label_weight": 1000, "weight_used": 0},
+              {"id": 2, "rgba": "9D432CFF", "material": "PLA", "label_weight": 1000, "weight_used": 400},
+              {"id": 5, "rgba": "FFFFFFFF", "material": "PLA", "archived_at": "2026-01-01"}]
+    out = shelf(spools, SETTINGS)
+    assert [(s["id"], s["grams_left"], s["palette"]) for s in out] == [(2, 600, "Body-Brown"), (9, 1000, None)]
 
 
 def test_pace_ignores_the_fail_rate_of_a_tiny_sample():

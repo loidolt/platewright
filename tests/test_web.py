@@ -367,7 +367,9 @@ def test_filament_page(client, fake, store):
                    {"rgba": "00FF00FF", "material": "PETG", "brand": "Acme", "label_weight": 1000, "weight_used": 0}]
     sign_in(client, fake)
     page = client.get("/filament").text
-    assert "750 g" in page and "Spools Not in the Palette" in page and "Acme" in page
+    assert "750 g" in page and "Acme" in page
+    # One spool table: the green PETG counts toward no palette color.
+    assert "Spools Not in the Palette" not in page and page.count("Not in palette") == 1
     assert page.count("Reorder") >= 1  # White: none on hand
 
 
